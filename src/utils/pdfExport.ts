@@ -1,5 +1,6 @@
 import { jsPDF } from 'jspdf';
 import { ServiceReport } from '../types';
+import { SOTEX_LOGO_DATA_URI } from './sotexLogoBase64';
 
 const getPDFConstructor = () => {
   return (jsPDF as any)?.default || jsPDF;
@@ -19,24 +20,23 @@ export function generateServiceReportPDF(report: ServiceReport, autoDownload = t
   let currentY = 12;
 
   // --- 1. HEADER ---
-  // Left: SOTEX Logo Box
-  doc.setFillColor(20, 24, 33);
-  doc.roundedRect(margin, currentY, 52, 16, 1.5, 1.5, 'F');
-
-  // Red accent line inside logo
-  doc.setFillColor(220, 38, 38);
-  doc.rect(margin + 2, currentY + 2, 2.5, 12, 'F');
-
-  // SOTEX text
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(14);
-  doc.setTextColor(255, 255, 255);
-  doc.text('SOTEX', margin + 7, currentY + 9);
-
-  doc.setFontSize(6.5);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(200, 210, 225);
-  doc.text('SOLUCIONES TECNOLÓGICAS', margin + 7, currentY + 13.5);
+  // Left: SOTEX Official Logo (https://sotex.com.mx/wp-content/uploads/2023/02/cropped-PNG-1-scaled-300x114.png)
+  try {
+    doc.addImage(SOTEX_LOGO_DATA_URI, 'PNG', margin, currentY - 1, 42, 16);
+  } catch {
+    doc.setFillColor(20, 24, 33);
+    doc.roundedRect(margin, currentY, 52, 16, 1.5, 1.5, 'F');
+    doc.setFillColor(220, 38, 38);
+    doc.rect(margin + 2, currentY + 2, 2.5, 12, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(14);
+    doc.setTextColor(255, 255, 255);
+    doc.text('SOTEX', margin + 7, currentY + 9);
+    doc.setFontSize(6.5);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(200, 210, 225);
+    doc.text('SOLUCIONES TECNOLÓGICAS', margin + 7, currentY + 13.5);
+  }
 
   // Right: Document title & Code
   doc.setFont('helvetica', 'bold');
@@ -464,19 +464,23 @@ function renderSinglePageOnDoc(doc: jsPDF, report: ServiceReport) {
   const contentWidth = pageWidth - margin * 2;
   let currentY = 12;
 
-  // SOTEX Logo Box
-  doc.setFillColor(20, 24, 33);
-  doc.roundedRect(margin, currentY, 52, 16, 1.5, 1.5, 'F');
-  doc.setFillColor(220, 38, 38);
-  doc.rect(margin + 2, currentY + 2, 2.5, 12, 'F');
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(14);
-  doc.setTextColor(255, 255, 255);
-  doc.text('SOTEX', margin + 7, currentY + 9);
-  doc.setFontSize(6.5);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(200, 210, 225);
-  doc.text('SOLUCIONES TECNOLÓGICAS', margin + 7, currentY + 13.5);
+  // SOTEX Official Logo (https://sotex.com.mx/wp-content/uploads/2023/02/cropped-PNG-1-scaled-300x114.png)
+  try {
+    doc.addImage(SOTEX_LOGO_DATA_URI, 'PNG', margin, currentY - 1, 42, 16);
+  } catch {
+    doc.setFillColor(20, 24, 33);
+    doc.roundedRect(margin, currentY, 52, 16, 1.5, 1.5, 'F');
+    doc.setFillColor(220, 38, 38);
+    doc.rect(margin + 2, currentY + 2, 2.5, 12, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(14);
+    doc.setTextColor(255, 255, 255);
+    doc.text('SOTEX', margin + 7, currentY + 9);
+    doc.setFontSize(6.5);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(200, 210, 225);
+    doc.text('SOLUCIONES TECNOLÓGICAS', margin + 7, currentY + 13.5);
+  }
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(14);
