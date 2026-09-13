@@ -58,7 +58,7 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({ className = 
             <div className="flex items-center gap-3 mb-4">
               <div className="w-12 h-12 rounded-xl bg-neutral-900 border border-neutral-700 flex items-center justify-center p-2 shadow-inner">
                 <img
-                  src="https://ljymwaifrkaedgmpdpwv.supabase.co/storage/v1/object/public/logo/urchecklogo.png"
+                  src="https://daloocomercializadora.com.mx/sotexicono.png"
                   alt="Sotex Icon"
                   className="w-8 h-8 object-contain"
                 />

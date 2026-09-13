@@ -54,7 +54,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <div className="mx-auto flex items-center justify-center">
             {/* Collapsed small icon */}
             <img
-              src="https://ljymwaifrkaedgmpdpwv.supabase.co/storage/v1/object/public/logo/urchecklogo.png"
+              src="https://daloocomercializadora.com.mx/sotexicono.png"
               alt="Sotex"
               className="w-8 h-8 object-contain rounded-md"
             />
@@ -162,7 +162,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <div className="bg-neutral-900/90 rounded-xl p-3 border border-neutral-800/80">
             <div className="flex items-center gap-2 mb-2">
               <img
-                src="https://ljymwaifrkaedgmpdpwv.supabase.co/storage/v1/object/public/logo/urchecklogo.png"
+                src="https://daloocomercializadora.com.mx/sotexicono.png"
                 alt="Sotex"
                 className="w-5 h-5 object-contain"
               />
