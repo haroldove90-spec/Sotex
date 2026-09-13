@@ -1,0 +1,6 @@
+{
+  "name": "Sotex",
+  "description": "Sistema de gestión y registro de reportes de servicio técnico para impresoras y equipos industriales con exportación en PDF y Excel (SOT-REP-CLG-01).",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
