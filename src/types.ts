@@ -58,7 +58,9 @@ export interface ServiceReport {
   createdAt: string;
 }
 
-export type ActiveModule = 'metricas' | 'reportes' | 'perfil';
+export type UserRole = 'admin' | 'tecnico';
+
+export type ActiveModule = 'metricas' | 'reportes' | 'empleados' | 'perfil';
 
 export interface AdminProfile {
   nombre: string;
@@ -70,4 +72,31 @@ export interface AdminProfile {
   fotoUrl?: string;
   firmaDigital?: string;
   bio?: string;
+}
+
+export interface Employee {
+  id: string;
+  nombre: string;
+  correo: string;
+  password?: string;
+  telefono: string;
+  puesto: string;
+  sucursal: string;
+  cedulaTecnica: string;
+  activo: boolean;
+  fotoUrl?: string;
+  firmaDigital?: string;
+  fechaRegistro: string;
+}
+
+export interface TechnicianProfile {
+  id: string;
+  nombre: string;
+  correo: string;
+  telefono: string;
+  puesto: string;
+  sucursal: string;
+  cedulaTecnica: string;
+  fotoUrl?: string;
+  firmaDigital?: string;
 }

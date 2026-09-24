@@ -1,0 +1,43 @@
+import { Employee } from '../types';
+
+export const INITIAL_EMPLOYEES: Employee[] = [
+  {
+    id: 'emp-001',
+    nombre: 'Tec. Carlos Mendoza',
+    correo: 'carlos.mendoza@sotex.com.mx',
+    password: 'Sotex#Tec2024*C',
+    telefono: '3336108820',
+    puesto: 'Técnico Especialista en Cabezales',
+    sucursal: 'Guadalajara (Matriz)',
+    cedulaTecnica: 'TEC-SOT-02',
+    activo: true,
+    fotoUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+    fechaRegistro: '2024-01-15',
+  },
+  {
+    id: 'emp-002',
+    nombre: 'Ing. Javier Rojas',
+    correo: 'javier.rojas@sotex.com.mx',
+    password: 'Sotex#Ing2024*J',
+    telefono: '3336158920',
+    puesto: 'Ingeniero de Soporte en Campo',
+    sucursal: 'Guadalajara (Matriz)',
+    cedulaTecnica: 'SOT-ING-4819',
+    activo: true,
+    fotoUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
+    fechaRegistro: '2024-01-10',
+  },
+  {
+    id: 'emp-003',
+    nombre: 'Tec. Miguel Ángel Soto',
+    correo: 'miguel.soto@sotex.com.mx',
+    password: 'Sotex#Tec2024*M',
+    telefono: '3318924510',
+    puesto: 'Técnico de Mantenimiento e Impresoras',
+    sucursal: 'Monterrey, N.L.',
+    cedulaTecnica: 'TEC-SOT-05',
+    activo: true,
+    fotoUrl: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80',
+    fechaRegistro: '2024-02-01',
+  },
+];
