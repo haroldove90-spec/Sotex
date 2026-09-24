@@ -77,8 +77,10 @@ export interface AdminProfile {
 export interface Employee {
   id: string;
   nombre: string;
+  usuario?: string;
   correo: string;
   password?: string;
+  rol: UserRole;
   telefono: string;
   puesto: string;
   sucursal: string;

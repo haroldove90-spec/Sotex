@@ -8,6 +8,7 @@ import { ServiceReport, VisitNumber, ActiveModule, AdminProfile, UserRole, Emplo
 import { INITIAL_REPORTS } from './data/mockReports';
 import { INITIAL_EMPLOYEES } from './data/mockEmployees';
 import { RoleHomeView } from './components/RoleHomeView';
+import { LoginModal } from './components/LoginModal';
 import { Navbar } from './components/Navbar';
 import { Sidebar } from './components/Sidebar';
 import { BottomNav } from './components/BottomNav';
@@ -20,6 +21,7 @@ import { ReportFormModal } from './components/ReportFormModal';
 import { ReportDetailModal } from './components/ReportDetailModal';
 import { exportReportsToExcel } from './utils/excelExport';
 import { generateAllReportsPDF, generateServiceReportPDF } from './utils/pdfExport';
+import { supabase, SUPABASE_SETUP_SQL } from './utils/supabaseClient';
 import {
   FileText,
   FileSpreadsheet,
@@ -28,6 +30,9 @@ import {
   Check,
   AlertTriangle,
   FileSearch,
+  Database,
+  X,
+  Copy,
 } from 'lucide-react';
 
 const STORAGE_KEY = 'sotex_service_reports_v2';
@@ -35,15 +40,16 @@ const ADMIN_PROFILE_KEY = 'sotex_admin_profile_v2';
 const TECH_PROFILE_KEY = 'sotex_tech_profile_v2';
 const EMPLOYEES_STORAGE_KEY = 'sotex_employees_v2';
 const ROLE_STORAGE_KEY = 'sotex_active_role_v2';
+const USER_STORAGE_KEY = 'sotex_active_user_v2';
 
 const DEFAULT_ADMIN_PROFILE: AdminProfile = {
-  nombre: 'Ing. Javier Rojas',
-  correo: 'javier.rojas@sotex.com.mx',
-  cargo: 'Administrador de Servicio Técnico',
-  telefono: '+52 (33) 3615-8920',
+  nombre: 'Harold Anguiano Morales',
+  correo: 'haroldo90@hotmail.com',
+  cargo: 'Director / Administrador General',
+  telefono: '+52 (33) 1234-5678',
   sucursal: 'Guadalajara (Matriz)',
-  cedulaTecnica: 'SOT-ING-4819',
-  bio: 'Especialista en diagnóstico y mantenimiento de cabezales térmicos Zebra, Honeywell, SATO y Datamax.',
+  cedulaTecnica: 'SOT-DIR-01',
+  bio: 'Administración central de servicio técnico, gestión de empleados y diagnóstico de cabezales térmicos.',
 };
 
 const DEFAULT_TECH_PROFILE: AdminProfile = {
@@ -52,7 +58,7 @@ const DEFAULT_TECH_PROFILE: AdminProfile = {
   cargo: 'Técnico Especialista en Cabezales',
   telefono: '+52 (33) 3610-8820',
   sucursal: 'Guadalajara (Matriz)',
-  cedulaTecnica: 'TEC-SOT-02',
+  cedulaTecnica: 'TEC-SOT-01',
   bio: 'Especialista en mantenimiento preventivo, correctivo y calibración de impresoras térmicas industriales.',
 };
 
@@ -100,7 +106,6 @@ const normalizeReport = (raw: any): ServiceReport => {
 
 export default function App() {
   // Current active role: null (Home view) | 'admin' | 'tecnico'
-  // Defaults to null so user initially sees the Home screen with logo and 2 roles
   const [currentRole, setCurrentRole] = useState<UserRole | null>(() => {
     try {
       const saved = localStorage.getItem(ROLE_STORAGE_KEY);
@@ -111,7 +116,24 @@ export default function App() {
     return null;
   });
 
-  // Reports state (shared and synchronized between Admin and Técnico)
+  // Current logged in user object
+  const [currentUser, setCurrentUser] = useState<Employee | null>(() => {
+    try {
+      const saved = localStorage.getItem(USER_STORAGE_KEY);
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return null;
+  });
+
+  // Login Modal state
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+  const [targetRoleHint, setTargetRoleHint] = useState<UserRole | null>(null);
+
+  // Global SQL viewer modal state
+  const [showSqlModal, setShowSqlModal] = useState(false);
+  const [copiedSql, setCopiedSql] = useState(false);
+
+  // Reports state (shared and synchronized)
   const [reports, setReports] = useState<ServiceReport[]>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
@@ -159,7 +181,7 @@ export default function App() {
     return DEFAULT_TECH_PROFILE;
   });
 
-  // Employees state (Managed by Admin)
+  // Employees state (Managed by Admin & synced with Supabase)
   const [employees, setEmployees] = useState<Employee[]>(() => {
     try {
       const saved = localStorage.getItem(EMPLOYEES_STORAGE_KEY);
@@ -182,6 +204,54 @@ export default function App() {
 
   // Toast notification
   const [toast, setToast] = useState<{ message: string; type?: 'success' | 'info' | 'error' } | null>(null);
+
+  // Fetch / Sync with Supabase on mount
+  useEffect(() => {
+    const fetchSupabaseData = async () => {
+      try {
+        const { data, error } = await supabase.from('employees').select('*');
+        if (!error && data && data.length > 0) {
+          const remoteEmployees: Employee[] = data.map((d: any) => ({
+            id: d.id,
+            nombre: d.nombre,
+            usuario: d.usuario,
+            correo: d.correo,
+            password: d.password,
+            rol: d.rol === 'admin' ? 'admin' : 'tecnico',
+            telefono: d.telefono || '',
+            puesto: d.puesto || '',
+            sucursal: d.sucursal || 'Guadalajara (Matriz)',
+            cedulaTecnica: d.cedula_tecnica || '',
+            activo: d.activo ?? true,
+            fotoUrl: d.foto_url,
+            firmaDigital: d.firma_digital,
+            fechaRegistro: d.created_at || new Date().toISOString().split('T')[0],
+          }));
+
+          setEmployees((localList) => {
+            const merged = [...remoteEmployees];
+            for (const local of localList) {
+              if (
+                !merged.some(
+                  (m) =>
+                    m.id === local.id ||
+                    (m.usuario && local.usuario && m.usuario === local.usuario) ||
+                    m.correo.toLowerCase() === local.correo.toLowerCase()
+                )
+              ) {
+                merged.push(local);
+              }
+            }
+            return merged;
+          });
+        }
+      } catch (err) {
+        console.log('Info de conexión a Supabase:', err);
+      }
+    };
+
+    fetchSupabaseData();
+  }, []);
 
   // Save reports to localStorage
   useEffect(() => {
@@ -230,31 +300,65 @@ export default function App() {
     }, 3500);
   };
 
-  // Role Selection & Logout
-  const handleSelectRole = (role: UserRole) => {
+  // Login Success Handler
+  const handleLoginSuccess = (user: Employee, role: UserRole) => {
+    setCurrentUser(user);
     setCurrentRole(role);
+    setIsLoginModalOpen(false);
+
     try {
       localStorage.setItem(ROLE_STORAGE_KEY, role);
+      localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(user));
     } catch {}
+
+    // Update active profile with user details
+    const newProfile: AdminProfile = {
+      nombre: user.nombre,
+      correo: user.correo,
+      cargo: user.puesto || (role === 'admin' ? 'Administrador' : 'Técnico de Servicio'),
+      telefono: user.telefono || '+52 (33) 3615-8920',
+      sucursal: user.sucursal || 'Guadalajara (Matriz)',
+      cedulaTecnica: user.cedulaTecnica || 'SOT-01',
+      bio: `Usuario activo en SOTEX con rol de ${role === 'admin' ? 'Administrador' : 'Técnico'}.`,
+      fotoUrl: user.fotoUrl,
+      firmaDigital: user.firmaDigital,
+    };
+
+    if (role === 'admin') {
+      setAdminProfile(newProfile);
+      try {
+        localStorage.setItem(ADMIN_PROFILE_KEY, JSON.stringify(newProfile));
+      } catch {}
+    } else {
+      setTechProfile(newProfile);
+      try {
+        localStorage.setItem(TECH_PROFILE_KEY, JSON.stringify(newProfile));
+      } catch {}
+    }
+
     if (role === 'tecnico' && activeModule === 'empleados') {
       setActiveModule('reportes');
     } else {
       setActiveModule('metricas');
     }
-    showToast(
-      role === 'admin'
-        ? 'Bienvenido Administrador a SOTEX.'
-        : 'Bienvenido Técnico de Servicio a SOTEX.',
-      'info'
-    );
+
+    showToast(`¡Bienvenido ${user.nombre}! Acceso como ${role === 'admin' ? 'Administrador' : 'Técnico'}.`, 'success');
   };
 
   const handleLogout = () => {
     setCurrentRole(null);
+    setCurrentUser(null);
     try {
       localStorage.removeItem(ROLE_STORAGE_KEY);
+      localStorage.removeItem(USER_STORAGE_KEY);
     } catch {}
     showToast('Sesión finalizada. Bienvenido a la selección de roles.', 'info');
+  };
+
+  const handleCopySql = () => {
+    navigator.clipboard.writeText(SUPABASE_SETUP_SQL);
+    setCopiedSql(true);
+    setTimeout(() => setCopiedSql(false), 3000);
   };
 
   // Employees Handlers
@@ -353,7 +457,76 @@ export default function App() {
   if (!currentRole) {
     return (
       <>
-        <RoleHomeView onSelectRole={handleSelectRole} />
+        <RoleHomeView
+          onOpenLogin={(roleHint) => {
+            setTargetRoleHint(roleHint || null);
+            setIsLoginModalOpen(true);
+          }}
+          onOpenSqlModal={() => setShowSqlModal(true)}
+        />
+
+        {/* Login Modal */}
+        <LoginModal
+          isOpen={isLoginModalOpen}
+          onClose={() => setIsLoginModalOpen(false)}
+          targetRoleHint={targetRoleHint}
+          onLoginSuccess={handleLoginSuccess}
+          localEmployees={employees}
+        />
+
+        {/* Modal: View SQL for Supabase */}
+        {showSqlModal && (
+          <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+            <div className="bg-[#1a1a1a] rounded-2xl max-w-2xl w-full border border-neutral-700 max-h-[85vh] flex flex-col overflow-hidden shadow-2xl text-white">
+              <div className="p-4 bg-[#111111] border-b border-neutral-800 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Database className="w-5 h-5 text-emerald-400" />
+                  <div>
+                    <h4 className="font-bold text-sm text-white">
+                      Script SQL para Supabase (znlhwxjiwrwcfhswppfx)
+                    </h4>
+                    <p className="text-[11px] text-neutral-400">
+                      Pega y corre este código en Supabase &gt; SQL Editor
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowSqlModal(false)}
+                  className="text-neutral-400 hover:text-white p-1 rounded-lg cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="p-4 flex-1 overflow-auto bg-neutral-950 font-mono text-xs text-emerald-300 select-all">
+                <pre className="whitespace-pre-wrap">{SUPABASE_SETUP_SQL}</pre>
+              </div>
+
+              <div className="p-4 bg-[#111111] border-t border-neutral-800 flex items-center justify-between">
+                <span className="text-xs text-neutral-400">
+                  Tablas, políticas RLS y credenciales para Harold y Carlos.
+                </span>
+                <button
+                  onClick={handleCopySql}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg shadow-sm cursor-pointer"
+                >
+                  {copiedSql ? (
+                    <>
+                      <Check className="w-4 h-4" />
+                      <span>¡Copiado!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-4 h-4" />
+                      <span>Copiar SQL</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {toast && (
           <div className="fixed bottom-5 right-5 z-50 animate-fade-in">
             <div
@@ -382,7 +555,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-100 text-slate-900 flex font-sans selection:bg-[#D60000] selection:text-white">
-      {/* 1. Left Sidebar - Desktop / Fullscreen ONLY (hidden on mobile and tablet) */}
+      {/* 1. Left Sidebar - Desktop / Fullscreen ONLY */}
       <Sidebar
         currentRole={currentRole}
         activeModule={activeModule}
@@ -411,7 +584,7 @@ export default function App() {
           onLogout={handleLogout}
         />
 
-        {/* Main Content Area (extra bottom padding on mobile for bottom navigation) */}
+        {/* Main Content Area */}
         <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-5 sm:py-6 pb-24 lg:pb-8">
           {/* Module 1: Métricas */}
           {activeModule === 'metricas' && (
@@ -524,6 +697,7 @@ export default function App() {
               <span>•</span>
               <span className="font-medium text-slate-600">
                 Rol: {currentRole === 'admin' ? 'Administrador' : 'Técnico de Servicio'}
+                {currentUser ? ` (${currentUser.nombre})` : ''}
               </span>
             </div>
             <div className="flex items-center gap-3 text-slate-500">
@@ -532,6 +706,14 @@ export default function App() {
                 className="hover:text-[#D60000] transition-colors underline font-medium cursor-pointer"
               >
                 Cerrar Sesión
+              </button>
+              <span>•</span>
+              <button
+                onClick={() => setShowSqlModal(true)}
+                className="hover:text-emerald-600 transition-colors underline font-medium cursor-pointer flex items-center gap-1"
+              >
+                <Database className="w-3 h-3 text-emerald-600" />
+                <span>SQL Supabase</span>
               </button>
               <span>•</span>
               <a
@@ -555,7 +737,7 @@ export default function App() {
         reportsCount={reports.length}
       />
 
-      {/* Form Modal (Create / Edit) */}
+      {/* Form Modal (Create / Edit Report) */}
       <ReportFormModal
         isOpen={isFormOpen}
         onClose={() => {
@@ -578,6 +760,59 @@ export default function App() {
         }}
         onEdit={(rep) => handleEditReport(rep)}
       />
+
+      {/* Modal: View SQL for Supabase */}
+      {showSqlModal && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+          <div className="bg-[#1a1a1a] rounded-2xl max-w-2xl w-full border border-neutral-700 max-h-[85vh] flex flex-col overflow-hidden shadow-2xl text-white">
+            <div className="p-4 bg-[#111111] border-b border-neutral-800 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Database className="w-5 h-5 text-emerald-400" />
+                <div>
+                  <h4 className="font-bold text-sm text-white">
+                    Script SQL para Supabase (znlhwxjiwrwcfhswppfx)
+                  </h4>
+                  <p className="text-[11px] text-neutral-400">
+                    Pega y corre este código en Supabase &gt; SQL Editor
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowSqlModal(false)}
+                className="text-neutral-400 hover:text-white p-1 rounded-lg cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-4 flex-1 overflow-auto bg-neutral-950 font-mono text-xs text-emerald-300 select-all">
+              <pre className="whitespace-pre-wrap">{SUPABASE_SETUP_SQL}</pre>
+            </div>
+
+            <div className="p-4 bg-[#111111] border-t border-neutral-800 flex items-center justify-between">
+              <span className="text-xs text-neutral-400">
+                Tablas, políticas RLS y credenciales para Harold y Carlos.
+              </span>
+              <button
+                onClick={handleCopySql}
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg shadow-sm cursor-pointer"
+              >
+                {copiedSql ? (
+                  <>
+                    <Check className="w-4 h-4" />
+                    <span>¡Copiado!</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-4 h-4" />
+                    <span>Copiar SQL</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Floating Toast Notification */}
       {toast && (
