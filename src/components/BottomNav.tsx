@@ -1,29 +1,37 @@
 import React from 'react';
-import { ActiveModule } from '../types';
-import { BarChart3, FileText, User } from 'lucide-react';
+import { ActiveModule, UserRole } from '../types';
+import { BarChart3, FileText, User, Users } from 'lucide-react';
 
 interface BottomNavProps {
+  currentRole: UserRole;
   activeModule: ActiveModule;
   onSelectModule: (module: ActiveModule) => void;
   reportsCount: number;
 }
 
 export const BottomNav: React.FC<BottomNavProps> = ({
+  currentRole,
   activeModule,
   onSelectModule,
   reportsCount,
 }) => {
+  const isAdmin = currentRole === 'admin';
+
   return (
     <nav
       id="mobile-bottom-nav"
       className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#212121] border-t border-neutral-800 shadow-2xl pb-[env(safe-area-inset-bottom,0px)]"
     >
-      <div className="grid grid-cols-3 h-14 max-w-md mx-auto items-center px-4">
+      <div
+        className={`grid ${
+          isAdmin ? 'grid-cols-4' : 'grid-cols-3'
+        } h-14 max-w-md mx-auto items-center px-2`}
+      >
         {/* 1. Module: Métricas */}
         <button
           id="btn-nav-metricas-mobile"
           onClick={() => onSelectModule('metricas')}
-          className={`flex flex-col items-center justify-center h-full relative transition-colors ${
+          className={`flex flex-col items-center justify-center h-full relative transition-colors cursor-pointer ${
             activeModule === 'metricas' ? 'text-white' : 'text-neutral-400 hover:text-neutral-200'
           }`}
         >
@@ -33,7 +41,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
             }`}
           />
           <span
-            className={`text-[11px] font-semibold mt-0.5 ${
+            className={`text-[10px] sm:text-[11px] font-semibold mt-0.5 ${
               activeModule === 'metricas' ? 'text-white font-bold' : 'text-neutral-400'
             }`}
           >
@@ -48,7 +56,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
         <button
           id="btn-nav-reportes-mobile"
           onClick={() => onSelectModule('reportes')}
-          className={`flex flex-col items-center justify-center h-full relative transition-colors ${
+          className={`flex flex-col items-center justify-center h-full relative transition-colors cursor-pointer ${
             activeModule === 'reportes' ? 'text-white' : 'text-neutral-400 hover:text-neutral-200'
           }`}
         >
@@ -65,7 +73,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
             )}
           </div>
           <span
-            className={`text-[11px] font-semibold mt-0.5 ${
+            className={`text-[10px] sm:text-[11px] font-semibold mt-0.5 ${
               activeModule === 'reportes' ? 'text-white font-bold' : 'text-neutral-400'
             }`}
           >
@@ -76,11 +84,38 @@ export const BottomNav: React.FC<BottomNavProps> = ({
           )}
         </button>
 
-        {/* 3. Module: Perfil */}
+        {/* 3. Module: Empleados (ONLY FOR ADMIN) */}
+        {isAdmin && (
+          <button
+            id="btn-nav-empleados-mobile"
+            onClick={() => onSelectModule('empleados')}
+            className={`flex flex-col items-center justify-center h-full relative transition-colors cursor-pointer ${
+              activeModule === 'empleados' ? 'text-white' : 'text-neutral-400 hover:text-neutral-200'
+            }`}
+          >
+            <Users
+              className={`w-5 h-5 ${
+                activeModule === 'empleados' ? 'text-[#D60000]' : 'text-neutral-400'
+              }`}
+            />
+            <span
+              className={`text-[10px] sm:text-[11px] font-semibold mt-0.5 ${
+                activeModule === 'empleados' ? 'text-white font-bold' : 'text-neutral-400'
+              }`}
+            >
+              Empleados
+            </span>
+            {activeModule === 'empleados' && (
+              <div className="absolute top-0 w-8 h-0.5 bg-[#D60000] rounded-full" />
+            )}
+          </button>
+        )}
+
+        {/* 4. Module: Perfil */}
         <button
           id="btn-nav-perfil-mobile"
           onClick={() => onSelectModule('perfil')}
-          className={`flex flex-col items-center justify-center h-full relative transition-colors ${
+          className={`flex flex-col items-center justify-center h-full relative transition-colors cursor-pointer ${
             activeModule === 'perfil' ? 'text-white' : 'text-neutral-400 hover:text-neutral-200'
           }`}
         >
@@ -90,7 +125,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
             }`}
           />
           <span
-            className={`text-[11px] font-semibold mt-0.5 ${
+            className={`text-[10px] sm:text-[11px] font-semibold mt-0.5 ${
               activeModule === 'perfil' ? 'text-white font-bold' : 'text-neutral-400'
             }`}
           >

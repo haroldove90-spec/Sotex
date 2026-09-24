@@ -4,14 +4,17 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { ServiceReport, VisitNumber, ActiveModule, AdminProfile } from './types';
+import { ServiceReport, VisitNumber, ActiveModule, AdminProfile, UserRole, Employee } from './types';
 import { INITIAL_REPORTS } from './data/mockReports';
+import { INITIAL_EMPLOYEES } from './data/mockEmployees';
+import { RoleHomeView } from './components/RoleHomeView';
 import { Navbar } from './components/Navbar';
 import { Sidebar } from './components/Sidebar';
 import { BottomNav } from './components/BottomNav';
 import { StatsCards } from './components/StatsCards';
 import { ReportsTable } from './components/ReportsTable';
 import { MetricsView } from './components/MetricsView';
+import { EmployeesView } from './components/EmployeesView';
 import { AdminProfileView } from './components/AdminProfileView';
 import { ReportFormModal } from './components/ReportFormModal';
 import { ReportDetailModal } from './components/ReportDetailModal';
@@ -25,11 +28,13 @@ import {
   Check,
   AlertTriangle,
   FileSearch,
-  Printer,
 } from 'lucide-react';
 
 const STORAGE_KEY = 'sotex_service_reports_v2';
 const ADMIN_PROFILE_KEY = 'sotex_admin_profile_v2';
+const TECH_PROFILE_KEY = 'sotex_tech_profile_v2';
+const EMPLOYEES_STORAGE_KEY = 'sotex_employees_v2';
+const ROLE_STORAGE_KEY = 'sotex_active_role_v2';
 
 const DEFAULT_ADMIN_PROFILE: AdminProfile = {
   nombre: 'Ing. Javier Rojas',
@@ -39,6 +44,16 @@ const DEFAULT_ADMIN_PROFILE: AdminProfile = {
   sucursal: 'Guadalajara (Matriz)',
   cedulaTecnica: 'SOT-ING-4819',
   bio: 'Especialista en diagnóstico y mantenimiento de cabezales térmicos Zebra, Honeywell, SATO y Datamax.',
+};
+
+const DEFAULT_TECH_PROFILE: AdminProfile = {
+  nombre: 'Tec. Carlos Mendoza',
+  correo: 'carlos.mendoza@sotex.com.mx',
+  cargo: 'Técnico Especialista en Cabezales',
+  telefono: '+52 (33) 3610-8820',
+  sucursal: 'Guadalajara (Matriz)',
+  cedulaTecnica: 'TEC-SOT-02',
+  bio: 'Especialista en mantenimiento preventivo, correctivo y calibración de impresoras térmicas industriales.',
 };
 
 const normalizeReport = (raw: any): ServiceReport => {
@@ -84,6 +99,19 @@ const normalizeReport = (raw: any): ServiceReport => {
 };
 
 export default function App() {
+  // Current active role: null (Home view) | 'admin' | 'tecnico'
+  // Defaults to null so user initially sees the Home screen with logo and 2 roles
+  const [currentRole, setCurrentRole] = useState<UserRole | null>(() => {
+    try {
+      const saved = localStorage.getItem(ROLE_STORAGE_KEY);
+      if (saved === 'admin' || saved === 'tecnico') {
+        return saved as UserRole;
+      }
+    } catch {}
+    return null;
+  });
+
+  // Reports state (shared and synchronized between Admin and Técnico)
   const [reports, setReports] = useState<ServiceReport[]>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
@@ -99,10 +127,10 @@ export default function App() {
     return INITIAL_REPORTS.map(normalizeReport);
   });
 
-  // Active module navigation: 'metricas' | 'reportes' | 'perfil'
+  // Active module navigation: 'metricas' | 'reportes' | 'empleados' | 'perfil'
   const [activeModule, setActiveModule] = useState<ActiveModule>('metricas');
 
-  // Sidebar collapse state (Fullscreen desktop hamburger)
+  // Sidebar collapse state
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
   // Admin Profile state
@@ -116,6 +144,33 @@ export default function App() {
       // Fallback
     }
     return DEFAULT_ADMIN_PROFILE;
+  });
+
+  // Technician Profile state
+  const [techProfile, setTechProfile] = useState<AdminProfile>(() => {
+    try {
+      const saved = localStorage.getItem(TECH_PROFILE_KEY);
+      if (saved) {
+        return JSON.parse(saved);
+      }
+    } catch {
+      // Fallback
+    }
+    return DEFAULT_TECH_PROFILE;
+  });
+
+  // Employees state (Managed by Admin)
+  const [employees, setEmployees] = useState<Employee[]>(() => {
+    try {
+      const saved = localStorage.getItem(EMPLOYEES_STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      }
+    } catch {}
+    return INITIAL_EMPLOYEES;
   });
 
   // Modals state
@@ -137,6 +192,15 @@ export default function App() {
     }
   }, [reports]);
 
+  // Save employees to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem(EMPLOYEES_STORAGE_KEY, JSON.stringify(employees));
+    } catch (e) {
+      console.error('Error saving employees to localStorage:', e);
+    }
+  }, [employees]);
+
   // Save admin profile to localStorage
   const handleSaveAdminProfile = (updated: AdminProfile) => {
     setAdminProfile(updated);
@@ -148,6 +212,17 @@ export default function App() {
     showToast('Perfil de administrador actualizado correctamente.', 'success');
   };
 
+  // Save tech profile to localStorage
+  const handleSaveTechProfile = (updated: AdminProfile) => {
+    setTechProfile(updated);
+    try {
+      localStorage.setItem(TECH_PROFILE_KEY, JSON.stringify(updated));
+    } catch (e) {
+      console.error('Error saving technician profile to localStorage:', e);
+    }
+    showToast('Perfil de técnico actualizado correctamente.', 'success');
+  };
+
   const showToast = (message: string, type: 'success' | 'info' | 'error' = 'success') => {
     setToast({ message, type });
     setTimeout(() => {
@@ -155,7 +230,51 @@ export default function App() {
     }, 3500);
   };
 
-  // Handlers
+  // Role Selection & Logout
+  const handleSelectRole = (role: UserRole) => {
+    setCurrentRole(role);
+    try {
+      localStorage.setItem(ROLE_STORAGE_KEY, role);
+    } catch {}
+    if (role === 'tecnico' && activeModule === 'empleados') {
+      setActiveModule('reportes');
+    } else {
+      setActiveModule('metricas');
+    }
+    showToast(
+      role === 'admin'
+        ? 'Bienvenido Administrador a SOTEX.'
+        : 'Bienvenido Técnico de Servicio a SOTEX.',
+      'info'
+    );
+  };
+
+  const handleLogout = () => {
+    setCurrentRole(null);
+    try {
+      localStorage.removeItem(ROLE_STORAGE_KEY);
+    } catch {}
+    showToast('Sesión finalizada. Bienvenido a la selección de roles.', 'info');
+  };
+
+  // Employees Handlers
+  const handleAddEmployee = (newEmp: Employee) => {
+    setEmployees((prev) => [newEmp, ...prev]);
+    showToast(`Empleado "${newEmp.nombre}" dado de alta con éxito.`, 'success');
+  };
+
+  const handleUpdateEmployee = (updatedEmp: Employee) => {
+    setEmployees((prev) => prev.map((e) => (e.id === updatedEmp.id ? updatedEmp : e)));
+    showToast(`Empleado "${updatedEmp.nombre}" actualizado correctamente.`, 'success');
+  };
+
+  const handleDeleteEmployee = (id: string) => {
+    const target = employees.find((e) => e.id === id);
+    setEmployees((prev) => prev.filter((e) => e.id !== id));
+    showToast(`Empleado "${target?.nombre || 'seleccionado'}" eliminado.`, 'info');
+  };
+
+  // Reports Handlers
   const handleOpenNewReport = () => {
     setEditingReport(null);
     setIsFormOpen(true);
@@ -225,28 +344,62 @@ export default function App() {
 
   const handleResetData = () => {
     if (window.confirm('¿Desea restaurar los datos de ejemplo iniciales del formato SOT-REP-CLG-01?')) {
-      setReports(INITIAL_REPORTS);
+      setReports(INITIAL_REPORTS.map(normalizeReport));
       showToast('Datos de muestra restaurados.', 'info');
     }
   };
+
+  // If no role is selected, render the Minimalist Home with Logo & 2-column role access
+  if (!currentRole) {
+    return (
+      <>
+        <RoleHomeView onSelectRole={handleSelectRole} />
+        {toast && (
+          <div className="fixed bottom-5 right-5 z-50 animate-fade-in">
+            <div
+              className={`flex items-center gap-2.5 px-4 py-2.5 rounded-lg shadow-xl text-xs font-semibold text-white ${
+                toast.type === 'error'
+                  ? 'bg-rose-600'
+                  : toast.type === 'info'
+                  ? 'bg-neutral-800'
+                  : 'bg-emerald-600'
+              }`}
+            >
+              {toast.type === 'error' ? (
+                <AlertTriangle className="w-4 h-4" />
+              ) : (
+                <Check className="w-4 h-4" />
+              )}
+              <span>{toast.message}</span>
+            </div>
+          </div>
+        )}
+      </>
+    );
+  }
+
+  const currentProfile = currentRole === 'tecnico' ? techProfile : adminProfile;
 
   return (
     <div className="min-h-screen bg-slate-100 text-slate-900 flex font-sans selection:bg-[#D60000] selection:text-white">
       {/* 1. Left Sidebar - Desktop / Fullscreen ONLY (hidden on mobile and tablet) */}
       <Sidebar
+        currentRole={currentRole}
         activeModule={activeModule}
         onSelectModule={setActiveModule}
         onNewReport={handleOpenNewReport}
         isCollapsed={isSidebarCollapsed}
         onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
         reportsCount={reports.length}
-        adminProfile={adminProfile}
+        adminProfile={currentProfile}
+        onLogout={handleLogout}
       />
 
       {/* 2. Main Content Viewport */}
       <div className="flex-1 flex flex-col min-w-0 overflow-x-hidden min-h-screen">
         {/* Top Header Navbar */}
         <Navbar
+          currentRole={currentRole}
           activeModule={activeModule}
           onSelectModule={setActiveModule}
           onNewReport={handleOpenNewReport}
@@ -255,6 +408,7 @@ export default function App() {
           totalCount={reports.length}
           isSidebarCollapsed={isSidebarCollapsed}
           onToggleSidebar={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+          onLogout={handleLogout}
         />
 
         {/* Main Content Area (extra bottom padding on mobile for bottom navigation) */}
@@ -268,7 +422,7 @@ export default function App() {
             />
           )}
 
-          {/* Module 2: Reportes de Servicio */}
+          {/* Module 2: Reportes de Servicio (Shared and synchronized) */}
           {activeModule === 'reportes' && (
             <div className="space-y-5">
               {/* Minimal Clean Header & Actions */}
@@ -285,7 +439,7 @@ export default function App() {
                 <div className="flex items-center gap-2 flex-wrap">
                   <button
                     onClick={handleOpenNewReport}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#D60000] hover:bg-[#b50000] text-white text-xs font-bold shadow-2xs transition-all active:scale-95"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#D60000] hover:bg-[#b50000] text-white text-xs font-bold shadow-2xs transition-all active:scale-95 cursor-pointer"
                   >
                     <Plus className="w-4 h-4 stroke-[2.5]" />
                     <span>Nuevo Registro</span>
@@ -293,7 +447,7 @@ export default function App() {
 
                   <button
                     onClick={handleExportAllExcel}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold shadow-2xs transition-all active:scale-95"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold shadow-2xs transition-all active:scale-95 cursor-pointer"
                   >
                     <FileSpreadsheet className="w-4 h-4" />
                     <span>Excel</span>
@@ -301,7 +455,7 @@ export default function App() {
 
                   <button
                     onClick={handleExportAllPDF}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold shadow-2xs transition-all active:scale-95"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold shadow-2xs transition-all active:scale-95 cursor-pointer"
                   >
                     <FileText className="w-4 h-4 text-red-400" />
                     <span>PDF ({reports.length})</span>
@@ -340,11 +494,21 @@ export default function App() {
             </div>
           )}
 
-          {/* Module 3: Perfil */}
+          {/* Module 3: Empleados (Admin Role Only) */}
+          {activeModule === 'empleados' && currentRole === 'admin' && (
+            <EmployeesView
+              employees={employees}
+              onAddEmployee={handleAddEmployee}
+              onUpdateEmployee={handleUpdateEmployee}
+              onDeleteEmployee={handleDeleteEmployee}
+            />
+          )}
+
+          {/* Module 4: Perfil */}
           {activeModule === 'perfil' && (
             <AdminProfileView
-              profile={adminProfile}
-              onSaveProfile={handleSaveAdminProfile}
+              profile={currentProfile}
+              onSaveProfile={currentRole === 'tecnico' ? handleSaveTechProfile : handleSaveAdminProfile}
               reports={reports}
             />
           )}
@@ -357,8 +521,19 @@ export default function App() {
               <span className="font-bold text-slate-700">SOTEX</span>
               <span>•</span>
               <span className="font-mono text-slate-500">SOT-REP-CLG-01</span>
+              <span>•</span>
+              <span className="font-medium text-slate-600">
+                Rol: {currentRole === 'admin' ? 'Administrador' : 'Técnico de Servicio'}
+              </span>
             </div>
             <div className="flex items-center gap-3 text-slate-500">
+              <button
+                onClick={handleLogout}
+                className="hover:text-[#D60000] transition-colors underline font-medium cursor-pointer"
+              >
+                Cerrar Sesión
+              </button>
+              <span>•</span>
               <a
                 href="https://www.sotex.com.mx"
                 target="_blank"
@@ -374,6 +549,7 @@ export default function App() {
 
       {/* 3. Bottom Navigation Bar - Mobile & Tablet ONLY */}
       <BottomNav
+        currentRole={currentRole}
         activeModule={activeModule}
         onSelectModule={setActiveModule}
         reportsCount={reports.length}
@@ -389,7 +565,7 @@ export default function App() {
         onSave={handleSaveReport}
         initialReport={editingReport}
         existingReportsCount={reports.length}
-        defaultAdminProfile={adminProfile}
+        defaultAdminProfile={currentProfile}
       />
 
       {/* Detail Modal (Printable Sheet View) */}
