@@ -99,7 +99,7 @@ export function generateServiceReportPDF(report: ServiceReport, autoDownload = t
 
   currentY += 8;
 
-  // Num. de visita
+  // Num. de visita & Tipo de Servicio
   doc.setFont('helvetica', 'bold');
   doc.text('Num. de visita:', leftColX, currentY);
 
@@ -123,6 +123,20 @@ export function generateServiceReportPDF(report: ServiceReport, autoDownload = t
     }
     doc.text(String(num), boxX + visitBoxWidth / 2, currentY - 0.5, { align: 'center' });
   });
+
+  // Tipo de Servicio & Estado on right column
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8.5);
+  doc.setTextColor(30, 30, 30);
+  doc.text('Lugar:', rightColX, currentY);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(report.tipoServicio === 'sotex' ? 30 : 214, report.tipoServicio === 'sotex' ? 64 : 0, report.tipoServicio === 'sotex' ? 175 : 0);
+  doc.text(
+    report.tipoServicio === 'sotex' ? 'EN TALLER SOTEX' : 'EN CAMPO (SITIO)',
+    rightColX + 14,
+    currentY
+  );
+  doc.line(rightColX + 13, currentY + 1, pageWidth - margin, currentY + 1);
 
   currentY += 7;
 
@@ -365,6 +379,66 @@ export function generateServiceReportPDF(report: ServiceReport, autoDownload = t
   }
   if (report.tecnicoNombre) {
     doc.text(report.tecnicoNombre, techSignX + signColWidth / 2, currentY + 8, { align: 'center' });
+  }
+
+  // Acceptance and status subtext
+  doc.setFontSize(7);
+  doc.setTextColor(100, 100, 100);
+  const statusStr = `Estatus: ${report.status || 'En Revisión'}${
+    report.aceptadaPorTecnico ? ' • Aceptada por Técnico' : ''
+  }`;
+  doc.text(statusStr, margin + 8, currentY + 12);
+
+  // If there are multiple photographic evidences, add page 2
+  if (report.evidenciasFotos && report.evidenciasFotos.length > 0) {
+    doc.addPage('letter', 'portrait');
+
+    // Page 2 Header
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(13);
+    doc.setTextColor(20, 20, 20);
+    doc.text('ANEXO DE EVIDENCIAS FOTOGRÁFICAS', margin, 18);
+
+    doc.setFontSize(8.5);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(80, 80, 80);
+    doc.text(
+      `Folio: ${report.folio} • ${report.empresa} • Fecha: ${report.fecha}`,
+      margin,
+      24
+    );
+    doc.setDrawColor(200, 200, 200);
+    doc.setLineWidth(0.3);
+    doc.line(margin, 27, pageWidth - margin, 27);
+
+    // Grid layout for photos (2 columns x 2 rows per page)
+    const imgBoxWidth = 88;
+    const imgBoxHeight = 65;
+    const gapX = 11;
+    const gapY = 12;
+    const startY = 32;
+
+    const photosToDraw = report.evidenciasFotos.slice(0, 6);
+    photosToDraw.forEach((foto, i) => {
+      const col = i % 2;
+      const row = Math.floor(i / 2);
+      const posX = margin + col * (imgBoxWidth + gapX);
+      const posY = startY + row * (imgBoxHeight + gapY);
+
+      if (posY + imgBoxHeight < 270) {
+        try {
+          doc.setDrawColor(210, 215, 220);
+          doc.rect(posX, posY, imgBoxWidth, imgBoxHeight);
+          doc.addImage(foto, 'JPEG', posX + 1, posY + 1, imgBoxWidth - 2, imgBoxHeight - 8, undefined, 'FAST');
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(7);
+          doc.setTextColor(80, 80, 80);
+          doc.text(`Evidencia #${i + 1}`, posX + 3, posY + imgBoxHeight - 2);
+        } catch {
+          // ignore
+        }
+      }
+    });
   }
 
   if (autoDownload) {

@@ -13,6 +13,7 @@ import {
   Award,
   PenTool,
 } from 'lucide-react';
+import { compressImageFile } from '../utils/imageCompressor';
 
 interface AdminProfileViewProps {
   profile: AdminProfile;
@@ -30,33 +31,32 @@ export const AdminProfileView: React.FC<AdminProfileViewProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const signatureInputRef = useRef<HTMLInputElement>(null);
 
-  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 4 * 1024 * 1024) {
-      alert('La imagen seleccionada supera los 4MB.');
-      return;
+    try {
+      const compressed = await compressImageFile(file, 400, 400, 0.8);
+      setFormData((prev) => ({ ...prev, fotoUrl: compressed }));
+    } catch (err) {
+      console.warn('Error al procesar foto de perfil:', err);
+    } finally {
+      if (e.target) e.target.value = '';
     }
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const base64 = event.target?.result as string;
-      setFormData((prev) => ({ ...prev, fotoUrl: base64 }));
-    };
-    reader.readAsDataURL(file);
   };
 
-  const handleSignatureUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleSignatureUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const base64 = event.target?.result as string;
-      setFormData((prev) => ({ ...prev, firmaDigital: base64 }));
-    };
-    reader.readAsDataURL(file);
+    try {
+      const compressed = await compressImageFile(file, 600, 250, 0.8);
+      setFormData((prev) => ({ ...prev, firmaDigital: compressed }));
+    } catch (err) {
+      console.warn('Error al procesar firma:', err);
+    } finally {
+      if (e.target) e.target.value = '';
+    }
   };
 
   const handleSubmit = (e: React.FormEvent) => {

@@ -3,8 +3,18 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
-import { ServiceReport, VisitNumber, ActiveModule, AdminProfile, UserRole, Employee } from './types';
+import React, { useState, useEffect, useMemo } from 'react';
+import {
+  ServiceReport,
+  VisitNumber,
+  ActiveModule,
+  AdminProfile,
+  UserRole,
+  Employee,
+  FolioConfig,
+  SystemNotification,
+  ServiceStatus,
+} from './types';
 import { INITIAL_REPORTS } from './data/mockReports';
 import { INITIAL_EMPLOYEES } from './data/mockEmployees';
 import { RoleHomeView } from './components/RoleHomeView';
@@ -18,12 +28,35 @@ import { MetricsView } from './components/MetricsView';
 import { EmployeesView } from './components/EmployeesView';
 import { AdminProfileView } from './components/AdminProfileView';
 import { UserManualView } from './components/UserManualView';
+import { WorkOrdersHistoryView } from './components/WorkOrdersHistoryView';
+import { NotificationsView } from './components/NotificationsView';
+import { FolioConfigModal } from './components/FolioConfigModal';
+import { FloatingNotificationAlert } from './components/FloatingNotificationAlert';
 import { ReportFormModal } from './components/ReportFormModal';
 import { ReportDetailModal } from './components/ReportDetailModal';
 import { DeleteConfirmModal, DeleteTarget } from './components/DeleteConfirmModal';
 import { exportReportsToExcel } from './utils/excelExport';
 import { generateAllReportsPDF, generateServiceReportPDF } from './utils/pdfExport';
 import { supabase, SUPABASE_SETUP_SQL } from './utils/supabaseClient';
+import {
+  saveReportsSafely,
+  loadReportsFromIndexedDB,
+  deleteReportFromIndexedDB,
+  STORAGE_KEY,
+} from './utils/reportsStorage';
+import {
+  loadFolioConfig,
+  saveFolioConfig,
+  advanceFolioNumber,
+  FOLIO_CONFIG_KEY,
+} from './utils/folioManager';
+import {
+  loadStoredNotifications,
+  saveNotifications,
+  dispatchNotification,
+  NOTIFICATIONS_CHANNEL_NAME,
+} from './utils/notificationsManager';
+import { playNotificationSound } from './utils/notificationSound';
 import {
   FileText,
   FileSpreadsheet,
@@ -38,7 +71,6 @@ import {
   Trash2,
 } from 'lucide-react';
 
-const STORAGE_KEY = 'sotex_service_reports_v2';
 const ADMIN_PROFILE_KEY = 'sotex_admin_profile_v2';
 const TECH_PROFILE_KEY = 'sotex_tech_profile_v2';
 const EMPLOYEES_STORAGE_KEY = 'sotex_employees_v2';
@@ -112,8 +144,9 @@ const DEFAULT_TECH_PROFILE: AdminProfile = {
 const normalizeReport = (raw: any): ServiceReport => {
   return {
     id: raw?.id || `rep-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-    reportCode: raw?.reportCode || 'SOT-REP-CLG-01',
-    folio: raw?.folio || 'SOT-2024-000',
+    reportCode: raw?.reportCode || raw?.report_code || 'SOT-REP-CLG-01',
+    folio: raw?.folio || 'SOT-2026-000',
+    tipoServicio: (raw?.tipoServicio === 'sotex' || raw?.tipo_servicio === 'sotex') ? 'sotex' : 'campo',
     empresa: raw?.empresa || 'Cliente SOTEX',
     fecha: raw?.fecha || new Date().toISOString().split('T')[0],
     direccion: raw?.direccion || '',
@@ -137,17 +170,23 @@ const normalizeReport = (raw: any): ServiceReport => {
       rebobinador: Boolean(raw?.danos?.rebobinador),
       otro: Boolean(raw?.danos?.otro),
     },
-    descripcionDanos: raw?.descripcionDanos || '',
-    pruebaCabezalResultado: raw?.pruebaCabezalResultado || '',
-    pruebaCabezalImagen: raw?.pruebaCabezalImagen,
-    clienteNombre: raw?.clienteNombre || '',
-    clienteEmail: raw?.clienteEmail || '',
-    clienteFirma: raw?.clienteFirma,
-    tecnicoNombre: raw?.tecnicoNombre || 'Ing. Javier Rojas (SOTEX)',
-    tecnicoFirma: raw?.tecnicoFirma,
-    status: raw?.status || 'Completado',
-    observacionesGenerales: raw?.observacionesGenerales || '',
-    createdAt: raw?.createdAt || new Date().toISOString(),
+    descripcionDanos: raw?.descripcionDanos || raw?.descripcion_danos || '',
+    pruebaCabezalResultado: raw?.pruebaCabezalResultado || raw?.prueba_cabezal_resultado || '',
+    pruebaCabezalImagen: raw?.pruebaCabezalImagen || raw?.prueba_cabezal_imagen,
+    evidenciasFotos: Array.isArray(raw?.evidenciasFotos || raw?.evidencias_fotos)
+      ? (raw?.evidenciasFotos || raw?.evidencias_fotos)
+      : [],
+    clienteNombre: raw?.clienteNombre || raw?.cliente_nombre || '',
+    clienteEmail: raw?.clienteEmail || raw?.cliente_email || '',
+    clienteFirma: raw?.clienteFirma || raw?.cliente_firma,
+    tecnicoNombre: raw?.tecnicoNombre || raw?.tecnico_nombre || 'Ing. Javier Rojas (SOTEX)',
+    tecnicoFirma: raw?.tecnicoFirma || raw?.tecnico_firma,
+    tecnicoId: raw?.tecnicoId || raw?.tecnico_id,
+    aceptadaPorTecnico: Boolean(raw?.aceptadaPorTecnico ?? raw?.aceptada_por_tecnico ?? false),
+    fechaAceptada: raw?.fechaAceptada || raw?.fecha_aceptada,
+    status: raw?.status || 'En Revisión',
+    observacionesGenerales: raw?.observacionesGenerales || raw?.observaciones_generales || '',
+    createdAt: raw?.createdAt || raw?.created_at || new Date().toISOString(),
   };
 };
 
@@ -255,6 +294,42 @@ export default function App() {
     return INITIAL_EMPLOYEES.filter(isNotDeleted);
   });
 
+  // Folio Configuration & Consecutives State
+  const [folioConfig, setFolioConfig] = useState<FolioConfig>(() => loadFolioConfig());
+  const [isFolioConfigOpen, setIsFolioConfigOpen] = useState(false);
+
+  // Real-time Notifications state
+  const [notifications, setNotifications] = useState<SystemNotification[]>(() =>
+    loadStoredNotifications()
+  );
+  const [floatingAlertOrder, setFloatingAlertOrder] = useState<ServiceReport | null>(null);
+
+  // Active technician names list
+  const techniciansList = useMemo(() => {
+    return employees
+      .filter((e) => e.rol === 'tecnico' && e.activo)
+      .map((e) => e.nombre);
+  }, [employees]);
+
+  // Unread notification badge count for active role
+  const unreadNotificationsCount = useMemo(() => {
+    return notifications.filter((n) => {
+      if (n.leida) return false;
+      if (currentRole === 'admin') {
+        return n.destinatarioRol === 'admin' || n.destinatarioRol === 'todos';
+      }
+      if (currentRole === 'tecnico') {
+        const userName = currentUser?.nombre || techProfile.nombre;
+        const matchesName =
+          !n.destinatarioTecnico ||
+          n.destinatarioTecnico.toLowerCase().includes(userName.toLowerCase()) ||
+          userName.toLowerCase().includes(n.destinatarioTecnico.toLowerCase());
+        return (n.destinatarioRol === 'tecnico' || n.destinatarioRol === 'todos') && matchesName;
+      }
+      return false;
+    }).length;
+  }, [notifications, currentRole, currentUser, techProfile]);
+
   // Modals state
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingReport, setEditingReport] = useState<ServiceReport | null>(null);
@@ -268,6 +343,68 @@ export default function App() {
 
   // Toast notification
   const [toast, setToast] = useState<{ message: string; type?: 'success' | 'info' | 'error' } | null>(null);
+
+  // Real-time cross-tab and cross-window notification listener
+  useEffect(() => {
+    const handleNewNotif = (e: any) => {
+      const notif: SystemNotification = e.detail;
+      if (!notif) return;
+      setNotifications((prev) => [notif, ...prev.filter((n) => n.id !== notif.id)]);
+
+      // If current role is technician and this is an order assigned to them:
+      if (currentRole === 'tecnico' && notif.tipo === 'nueva_orden') {
+        const userName = currentUser?.nombre || techProfile.nombre;
+        const matchesName =
+          !notif.destinatarioTecnico ||
+          notif.destinatarioTecnico.toLowerCase().includes(userName.toLowerCase()) ||
+          userName.toLowerCase().includes(notif.destinatarioTecnico.toLowerCase());
+        if (matchesName) {
+          const target = reports.find((r) => r.id === notif.ordenId || r.folio === notif.folio);
+          if (target) {
+            setFloatingAlertOrder(target);
+          }
+        }
+      }
+    };
+
+    window.addEventListener('sotex_new_notification', handleNewNotif);
+
+    let channel: BroadcastChannel | null = null;
+    try {
+      channel = new BroadcastChannel(NOTIFICATIONS_CHANNEL_NAME);
+      channel.onmessage = (ev) => {
+        if (ev.data?.type === 'NEW_NOTIFICATION' && ev.data.notification) {
+          handleNewNotif({ detail: ev.data.notification });
+        }
+      };
+    } catch {}
+
+    return () => {
+      window.removeEventListener('sotex_new_notification', handleNewNotif);
+      if (channel) channel.close();
+    };
+  }, [currentRole, currentUser, techProfile, reports]);
+
+  // Check on login or role change if technician has an active unaccepted order
+  useEffect(() => {
+    if (currentRole === 'tecnico') {
+      const currentTechName = currentUser?.nombre || techProfile.nombre;
+      const unacceptedOrder = reports.find(
+        (r) =>
+          !r.aceptadaPorTecnico &&
+          r.status === 'En Revisión' &&
+          r.tecnicoNombre &&
+          (r.tecnicoNombre.toLowerCase().includes(currentTechName.toLowerCase()) ||
+            currentTechName.toLowerCase().includes(r.tecnicoNombre.toLowerCase()) ||
+            r.tecnicoNombre.toLowerCase().includes('carlos'))
+      );
+      if (unacceptedOrder && !floatingAlertOrder) {
+        setFloatingAlertOrder(unacceptedOrder);
+      }
+    } else {
+      setFloatingAlertOrder(null);
+    }
+  }, [currentRole, currentUser, techProfile, reports]);
 
   // Fetch / Sync with Supabase on mount
   useEffect(() => {
@@ -340,6 +477,7 @@ export default function App() {
                 id: d.id,
                 reportCode: d.report_code || 'SOT-REP-CLG-01',
                 folio: d.folio,
+                tipoServicio: d.tipo_servicio || 'campo',
                 empresa: d.empresa,
                 fecha: d.fecha,
                 direccion: d.direccion || '',
@@ -350,12 +488,16 @@ export default function App() {
                 descripcionDanos: d.descripcion_danos || '',
                 pruebaCabezalResultado: d.prueba_cabezal_resultado || '',
                 pruebaCabezalImagen: d.prueba_cabezal_imagen,
+                evidenciasFotos: d.evidencias_fotos || [],
                 clienteNombre: d.cliente_nombre || '',
                 clienteEmail: d.cliente_email || '',
                 clienteFirma: d.cliente_firma,
                 tecnicoNombre: d.tecnico_nombre || '',
                 tecnicoFirma: d.tecnico_firma,
-                status: d.status || 'Completado',
+                tecnicoId: d.tecnico_id,
+                aceptadaPorTecnico: d.aceptada_por_tecnico,
+                fechaAceptada: d.fecha_aceptada,
+                status: d.status || 'En Revisión',
                 observacionesGenerales: d.observaciones_generales || '',
                 createdAt: d.created_at,
               })
@@ -386,26 +528,118 @@ export default function App() {
       } catch (repErr) {
         console.log('Info de sincronización reportes Supabase:', repErr);
       }
+
+      // 3. Sync Folio Config from Supabase
+      try {
+        const { data: cfgData, error: cfgError } = await supabase
+          .from('configuracion_folios')
+          .select('*')
+          .eq('id', 'config_principal')
+          .maybeSingle();
+        if (!cfgError && cfgData) {
+          const remoteConfig: FolioConfig = {
+            prefijo: cfgData.prefijo_folio || 'SOT-2026-',
+            ultimoNumero: cfgData.ultimo_folio_numero ?? 5,
+            codigoFormato: cfgData.codigo_formato_actual || 'SOT-REP-CLG-01',
+            cerosPadding: cfgData.ceros_padding ?? 3,
+          };
+          setFolioConfig(remoteConfig);
+          try {
+            localStorage.setItem(FOLIO_CONFIG_KEY, JSON.stringify(remoteConfig));
+          } catch {}
+        }
+      } catch (err) {
+        console.log('Info de sincronización folios Supabase:', err);
+      }
+
+      // 4. Sync Notifications from Supabase
+      try {
+        const { data: notifData, error: notifError } = await supabase
+          .from('system_notifications')
+          .select('*')
+          .order('fecha', { ascending: false })
+          .limit(50);
+        if (!notifError && notifData && notifData.length > 0) {
+          const remoteNotifs: SystemNotification[] = notifData.map((d: any) => ({
+            id: d.id,
+            titulo: d.titulo,
+            mensaje: d.mensaje,
+            fecha: d.fecha || d.created_at,
+            tipo: d.tipo,
+            ordenId: d.orden_id,
+            folio: d.folio,
+            destinatarioRol: d.destinatario_rol,
+            destinatarioTecnico: d.destinatario_tecnico,
+            remitenteNombre: d.remitente_nombre,
+            leida: d.leida,
+            accionRequerida: d.accion_requerida,
+          }));
+
+          setNotifications((localList) => {
+            const map = new Map<string, SystemNotification>();
+            remoteNotifs.forEach((n) => map.set(n.id, n));
+            localList.forEach((n) => {
+              if (!map.has(n.id)) map.set(n.id, n);
+            });
+            const merged = Array.from(map.values()).sort(
+              (a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime()
+            );
+            saveNotifications(merged);
+            return merged;
+          });
+        }
+      } catch (err) {
+        console.log('Info de sincronización notificaciones Supabase:', err);
+      }
     };
 
     fetchSupabaseData();
   }, []);
 
-  // Save reports to localStorage
+  // Save reports safely with IndexedDB and quota-protected storage
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(reports));
-    } catch (e) {
-      console.error('Error saving reports to localStorage:', e);
-    }
+    saveReportsSafely(reports);
   }, [reports]);
+
+  // Asynchronously hydrate complete reports from IndexedDB (including rich diagnostic images)
+  useEffect(() => {
+    loadReportsFromIndexedDB()
+      .then((idbReports) => {
+        if (idbReports && idbReports.length > 0) {
+          const deletedKeys = getPermanentlyDeletedReportKeys();
+          const isNotDeleted = (r: any) =>
+            r &&
+            !deletedKeys.has(String(r.id || '').toLowerCase()) &&
+            !deletedKeys.has(String(r.folio || '').toLowerCase());
+
+          const validIdb = idbReports.filter(isNotDeleted).map(normalizeReport);
+          if (validIdb.length > 0) {
+            setReports((prev) => {
+              const map = new Map<string, ServiceReport>();
+              prev.forEach((r) => map.set(r.id, r));
+              validIdb.forEach((r) => {
+                const existing = map.get(r.id);
+                // If not in state, or IndexedDB has the full test image
+                if (!existing || (!existing.pruebaCabezalImagen && r.pruebaCabezalImagen)) {
+                  map.set(r.id, r);
+                }
+              });
+              return Array.from(map.values()).map(normalizeReport);
+            });
+          }
+        }
+      })
+      .catch((err) => {
+        console.warn('Nota de hidratación IndexedDB:', err);
+      });
+  }, []);
 
   // Save employees to localStorage
   useEffect(() => {
     try {
       localStorage.setItem(EMPLOYEES_STORAGE_KEY, JSON.stringify(employees));
     } catch (e) {
-      console.error('Error saving employees to localStorage:', e);
+      console.warn('Nota al guardar empleados en almacenamiento:', e);
     }
   }, [employees]);
 
@@ -415,7 +649,7 @@ export default function App() {
     try {
       localStorage.setItem(ADMIN_PROFILE_KEY, JSON.stringify(updated));
     } catch (e) {
-      console.error('Error saving admin profile to localStorage:', e);
+      console.warn('Nota al guardar perfil de administrador:', e);
     }
     showToast('Perfil de administrador actualizado correctamente.', 'success');
   };
@@ -426,7 +660,7 @@ export default function App() {
     try {
       localStorage.setItem(TECH_PROFILE_KEY, JSON.stringify(updated));
     } catch (e) {
-      console.error('Error saving technician profile to localStorage:', e);
+      console.warn('Nota al guardar perfil de técnico:', e);
     }
     showToast('Perfil de técnico actualizado correctamente.', 'success');
   };
@@ -552,7 +786,8 @@ export default function App() {
       // 1. Add to permanent blacklist
       addPermanentlyDeletedReportKeys(report.id, report.folio);
 
-      // 2. Remove immediately from local state
+      // 2. Remove immediately from local state and IndexedDB
+      deleteReportFromIndexedDB(report.id);
       setReports((prev) =>
         prev.filter((r) => r.id !== report.id && r.folio !== report.folio)
       );
@@ -585,7 +820,10 @@ export default function App() {
       const folios = toDelete.map((r) => r.folio);
 
       // 1. Add to permanent blacklist
-      toDelete.forEach((r) => addPermanentlyDeletedReportKeys(r.id, r.folio));
+      toDelete.forEach((r) => {
+        addPermanentlyDeletedReportKeys(r.id, r.folio);
+        deleteReportFromIndexedDB(r.id);
+      });
 
       // 2. Remove immediately from local state
       setReports((prev) =>
@@ -642,7 +880,137 @@ export default function App() {
     setDeleteTarget(null);
   };
 
+  const handleSaveFolioConfig = async (newConfig: FolioConfig) => {
+    setFolioConfig(newConfig);
+    await saveFolioConfig(newConfig);
+    showToast(`Consecutivo oficial actualizado: ${newConfig.prefijo}...`, 'success');
+  };
+
+  const handleAcceptOrder = async (folio: string) => {
+    const target = reports.find((r) => r.folio === folio);
+    if (!target) return;
+
+    const currentProfile = currentRole === 'tecnico' ? techProfile : adminProfile;
+    const nowIso = new Date().toISOString();
+    const updated: ServiceReport = {
+      ...target,
+      aceptadaPorTecnico: true,
+      fechaAceptada: nowIso,
+    };
+
+    setReports((prev) => prev.map((r) => (r.folio === folio ? updated : r)));
+    setFloatingAlertOrder(null);
+
+    // Sync to Supabase
+    try {
+      await supabase
+        .from('service_reports')
+        .update({
+          aceptada_por_tecnico: true,
+          fecha_aceptada: nowIso,
+        })
+        .eq('folio', folio);
+    } catch (err) {
+      console.log('Nota: Aceptación local registrada:', err);
+    }
+
+    // Mark corresponding notification as read
+    setNotifications((prev) => {
+      const updatedNotifs = prev.map((n) =>
+        n.folio === folio ? { ...n, leida: true, accionRequerida: false } : n
+      );
+      saveNotifications(updatedNotifs);
+      return updatedNotifs;
+    });
+
+    // Dispatch notification to Admin
+    await dispatchNotification({
+      titulo: 'Orden de Trabajo Aceptada',
+      mensaje: `El técnico ${currentProfile.nombre} ha recibido y aceptado la orden ${target.folio} (${target.empresa}).`,
+      tipo: 'orden_aceptada',
+      ordenId: target.id,
+      folio: target.folio,
+      destinatarioRol: 'admin',
+      remitenteNombre: currentProfile.nombre,
+      leida: false,
+      accionRequerida: false,
+    });
+
+    showToast(`¡Orden ${folio} aceptada! El administrador ha sido notificado al instante.`, 'success');
+  };
+
+  const handleStatusChange = async (report: ServiceReport, newStatus: ServiceStatus) => {
+    if (report.status === newStatus) return;
+    const oldStatus = report.status;
+    const updated: ServiceReport = { ...report, status: newStatus };
+
+    setReports((prev) => prev.map((r) => (r.id === report.id ? updated : r)));
+
+    // Sync to Supabase
+    try {
+      await supabase.from('service_reports').update({ status: newStatus }).eq('id', report.id);
+    } catch {}
+
+    // If technician changed the status, notify Admin!
+    if (currentRole === 'tecnico') {
+      const currentProfile = techProfile;
+      await dispatchNotification({
+        titulo: `Estatus de Orden Actualizado: ${newStatus}`,
+        mensaje: `El técnico ${currentProfile.nombre} actualizó la orden ${report.folio} (${report.empresa}) a '${newStatus}'.`,
+        tipo: 'cambio_estatus',
+        ordenId: report.id,
+        folio: report.folio,
+        destinatarioRol: 'admin',
+        remitenteNombre: currentProfile.nombre,
+        leida: false,
+        accionRequerida: false,
+        detalles: {
+          estatusAnterior: oldStatus,
+          estatusNuevo: newStatus,
+          empresa: report.empresa,
+        },
+      });
+    }
+
+    showToast(`Estatus de orden ${report.folio} actualizado a "${newStatus}".`, 'success');
+  };
+
+  const handleMarkNotifAsRead = (id: string) => {
+    setNotifications((prev) => {
+      const updated = prev.map((n) => (n.id === id ? { ...n, leida: true } : n));
+      saveNotifications(updated);
+      return updated;
+    });
+  };
+
+  const handleMarkAllNotifsAsRead = () => {
+    setNotifications((prev) => {
+      const updated = prev.map((n) => ({ ...n, leida: true }));
+      saveNotifications(updated);
+      return updated;
+    });
+    showToast('Todas las notificaciones han sido marcadas como leídas.', 'info');
+  };
+
+  const handleClearAllNotifs = () => {
+    setNotifications([]);
+    saveNotifications([]);
+    showToast('Historial de notificaciones limpiado.', 'info');
+  };
+
   const handleSaveReport = async (report: ServiceReport, andDownloadPDF = false) => {
+    const isNew = !reports.some((r) => r.id === report.id || r.folio === report.folio);
+    const previous = reports.find((r) => r.id === report.id || r.folio === report.folio);
+
+    // If new report created, advance consecutive counter in folioConfig!
+    if (isNew) {
+      advanceFolioNumber()
+        .then((res) => {
+          setFolioConfig((prev) => ({ ...prev, ultimoNumero: res.newNumber }));
+        })
+        .catch(() => {});
+    }
+
     setReports((prev) => {
       const existsIndex = prev.findIndex((r) => r.id === report.id || r.folio === report.folio);
       if (existsIndex >= 0) {
@@ -663,6 +1031,7 @@ export default function App() {
         id: report.id,
         report_code: report.reportCode || 'SOT-REP-CLG-01',
         folio: report.folio,
+        tipo_servicio: report.tipoServicio || 'campo',
         empresa: report.empresa,
         fecha: report.fecha,
         direccion: report.direccion || '',
@@ -673,16 +1042,82 @@ export default function App() {
         descripcion_danos: report.descripcionDanos || '',
         prueba_cabezal_resultado: report.pruebaCabezalResultado || '',
         prueba_cabezal_imagen: report.pruebaCabezalImagen || null,
+        evidencias_fotos: report.evidenciasFotos || [],
         cliente_nombre: report.clienteNombre || '',
         cliente_email: report.clienteEmail || '',
         cliente_firma: report.clienteFirma || null,
         tecnico_nombre: report.tecnicoNombre || '',
         tecnico_firma: report.tecnicoFirma || null,
-        status: report.status || 'Completado',
+        tecnico_id: report.tecnicoId || null,
+        aceptada_por_tecnico: report.aceptadaPorTecnico ?? false,
+        fecha_aceptada: report.fechaAceptada || null,
+        status: report.status || 'En Revisión',
         observaciones_generales: report.observacionesGenerales || '',
       });
     } catch (err) {
       console.log('Nota: Guardado local exitoso. En espera de script en Supabase:', err);
+    }
+
+    const currentProfile = currentRole === 'tecnico' ? techProfile : adminProfile;
+
+    // Dispatch real-time notifications
+    if (isNew) {
+      if (currentRole === 'admin') {
+        // Admin assigned order to technician
+        await dispatchNotification({
+          titulo: 'Nueva Orden de Trabajo Asignada',
+          mensaje: `Se ha asignado la orden ${report.folio} (${report.empresa}) para diagnóstico.`,
+          tipo: 'nueva_orden',
+          ordenId: report.id,
+          folio: report.folio,
+          destinatarioRol: 'tecnico',
+          destinatarioTecnico: report.tecnicoNombre,
+          remitenteNombre: currentProfile.nombre,
+          leida: false,
+          accionRequerida: true,
+          detalles: {
+            empresa: report.empresa,
+            tipoServicio: report.tipoServicio,
+            estatusNuevo: report.status,
+          },
+        });
+      } else {
+        // Technician registered new order
+        await dispatchNotification({
+          titulo: 'Nueva Orden Registrada por Técnico',
+          mensaje: `El técnico ${currentProfile.nombre} dio de alta la orden ${report.folio} (${report.empresa}).`,
+          tipo: 'nueva_orden',
+          ordenId: report.id,
+          folio: report.folio,
+          destinatarioRol: 'admin',
+          remitenteNombre: currentProfile.nombre,
+          leida: false,
+          accionRequerida: false,
+          detalles: {
+            empresa: report.empresa,
+            tipoServicio: report.tipoServicio,
+            estatusNuevo: report.status,
+          },
+        });
+      }
+    } else if (previous && previous.status !== report.status && currentRole === 'tecnico') {
+      // Technician modified status, notify Admin
+      await dispatchNotification({
+        titulo: `Estatus de Orden Actualizado: ${report.status}`,
+        mensaje: `El técnico ${currentProfile.nombre} actualizó la orden ${report.folio} (${report.empresa}) a '${report.status}'.`,
+        tipo: 'cambio_estatus',
+        ordenId: report.id,
+        folio: report.folio,
+        destinatarioRol: 'admin',
+        remitenteNombre: currentProfile.nombre,
+        leida: false,
+        accionRequerida: false,
+        detalles: {
+          estatusAnterior: previous.status,
+          estatusNuevo: report.status,
+          empresa: report.empresa,
+        },
+      });
     }
 
     if (andDownloadPDF) {
@@ -835,6 +1270,7 @@ export default function App() {
         reportsCount={reports.length}
         adminProfile={currentProfile}
         onLogout={handleLogout}
+        unreadNotificationsCount={unreadNotificationsCount}
       />
 
       {/* 2. Main Content Viewport */}
@@ -851,6 +1287,8 @@ export default function App() {
           isSidebarCollapsed={isSidebarCollapsed}
           onToggleSidebar={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
           onLogout={handleLogout}
+          unreadNotificationsCount={unreadNotificationsCount}
+          onOpenFolioConfig={() => setIsFolioConfigOpen(true)}
         />
 
         {/* Main Content Area */}
@@ -874,7 +1312,7 @@ export default function App() {
                     Reportes de Servicio
                   </h2>
                   <span className="bg-red-100 text-red-700 text-[11px] font-mono font-bold px-2 py-0.5 rounded">
-                    SOT-REP-CLG-01
+                    {folioConfig.codigoFormato || 'SOT-REP-CLG-01'}
                   </span>
                 </div>
 
@@ -937,6 +1375,38 @@ export default function App() {
             </div>
           )}
 
+          {/* Module: Historial de Órdenes de Trabajo (Admin & Técnico) */}
+          {activeModule === 'historial' && (
+            <WorkOrdersHistoryView
+              reports={reports}
+              currentRole={currentRole}
+              currentUserName={currentUser?.nombre || currentProfile.nombre}
+              onViewReport={handleViewReport}
+              onEditReport={handleEditReport}
+              onStatusChange={handleStatusChange}
+              onAcceptOrder={handleAcceptOrder}
+              onNewReport={handleOpenNewReport}
+            />
+          )}
+
+          {/* Module: Notificaciones en Tiempo Real (Admin & Técnico) */}
+          {activeModule === 'notificaciones' && (
+            <NotificationsView
+              notifications={notifications}
+              currentRole={currentRole}
+              currentUserName={currentUser?.nombre || currentProfile.nombre}
+              onMarkAsRead={handleMarkNotifAsRead}
+              onMarkAllAsRead={handleMarkAllNotifsAsRead}
+              onClearAll={handleClearAllNotifs}
+              onSelectOrder={(folio) => {
+                const rep = reports.find((r) => r.folio === folio);
+                if (rep) handleViewReport(rep);
+              }}
+              onAcceptOrder={handleAcceptOrder}
+              reports={reports}
+            />
+          )}
+
           {/* Module 3: Empleados (Admin Role Only) */}
           {activeModule === 'empleados' && currentRole === 'admin' && (
             <EmployeesView
@@ -971,7 +1441,7 @@ export default function App() {
             <div className="flex items-center gap-2">
               <span className="font-bold text-slate-700">SOTEX</span>
               <span>•</span>
-              <span className="font-mono text-slate-500">SOT-REP-CLG-01</span>
+              <span className="font-mono text-slate-500">{folioConfig.codigoFormato || 'SOT-REP-CLG-01'}</span>
               <span>•</span>
               <span className="font-medium text-slate-600">
                 Rol: {currentRole === 'admin' ? 'Administrador' : 'Técnico de Servicio'}
@@ -1013,6 +1483,7 @@ export default function App() {
         activeModule={activeModule}
         onSelectModule={setActiveModule}
         reportsCount={reports.length}
+        unreadNotificationsCount={unreadNotificationsCount}
       />
 
       {/* Form Modal (Create / Edit Report) */}
@@ -1026,6 +1497,10 @@ export default function App() {
         initialReport={editingReport}
         existingReportsCount={reports.length}
         defaultAdminProfile={currentProfile}
+        currentRole={currentRole}
+        currentUserName={currentUser?.nombre || currentProfile.nombre}
+        techniciansList={techniciansList}
+        folioConfig={folioConfig}
       />
 
       {/* Detail Modal (Printable Sheet View) */}
@@ -1038,7 +1513,28 @@ export default function App() {
         }}
         onEdit={(rep) => handleEditReport(rep)}
         onDelete={(rep) => handleRequestDeleteReport(rep)}
+        onAccept={handleAcceptOrder}
+        currentRole={currentRole}
       />
+
+      {/* Folio and Format Code Configuration Modal (Admin) */}
+      <FolioConfigModal
+        isOpen={isFolioConfigOpen}
+        onClose={() => setIsFolioConfigOpen(false)}
+        config={folioConfig}
+        onSave={handleSaveFolioConfig}
+      />
+
+      {/* Floating Notification Window for Technician */}
+      {currentRole === 'tecnico' && floatingAlertOrder && (
+        <FloatingNotificationAlert
+          report={floatingAlertOrder}
+          onAccept={(rep) => handleAcceptOrder(rep.folio)}
+          onView={(rep) => handleViewReport(rep)}
+          onDismiss={() => setFloatingAlertOrder(null)}
+          technicianName={currentUser?.nombre || currentProfile.nombre}
+        />
+      )}
 
       {/* Delete Confirm Modal (Borrar de Raíz) */}
       <DeleteConfirmModal

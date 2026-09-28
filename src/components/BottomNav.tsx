@@ -1,12 +1,13 @@
 import React from 'react';
 import { ActiveModule, UserRole } from '../types';
-import { BarChart3, FileText, User, Users, BookOpen } from 'lucide-react';
+import { BarChart3, FileText, User, Users, BookOpen, History, Bell } from 'lucide-react';
 
 interface BottomNavProps {
   currentRole: UserRole;
   activeModule: ActiveModule;
   onSelectModule: (module: ActiveModule) => void;
   reportsCount: number;
+  unreadNotificationsCount?: number;
 }
 
 export const BottomNav: React.FC<BottomNavProps> = ({
@@ -14,6 +15,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
   activeModule,
   onSelectModule,
   reportsCount,
+  unreadNotificationsCount = 0,
 }) => {
   const isAdmin = currentRole === 'admin';
 
@@ -22,11 +24,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
       id="mobile-bottom-nav"
       className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#212121] border-t border-neutral-800 shadow-2xl pb-[env(safe-area-inset-bottom,0px)]"
     >
-      <div
-        className={`grid ${
-          isAdmin ? 'grid-cols-5' : 'grid-cols-4'
-        } h-14 max-w-md mx-auto items-center px-1.5`}
-      >
+      <div className="grid grid-cols-5 h-14 max-w-md mx-auto items-center px-1">
         {/* 1. Module: Métricas */}
         <button
           id="btn-nav-metricas-mobile"
@@ -41,7 +39,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
             }`}
           />
           <span
-            className={`text-[10px] sm:text-[11px] font-semibold mt-0.5 ${
+            className={`text-[10px] font-semibold mt-0.5 ${
               activeModule === 'metricas' ? 'text-white font-bold' : 'text-neutral-400'
             }`}
           >
@@ -73,7 +71,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
             )}
           </div>
           <span
-            className={`text-[10px] sm:text-[11px] font-semibold mt-0.5 ${
+            className={`text-[10px] font-semibold mt-0.5 ${
               activeModule === 'reportes' ? 'text-white font-bold' : 'text-neutral-400'
             }`}
           >
@@ -84,8 +82,65 @@ export const BottomNav: React.FC<BottomNavProps> = ({
           )}
         </button>
 
-        {/* 3. Module: Empleados (ONLY FOR ADMIN) */}
-        {isAdmin && (
+        {/* 3. Module: Historial */}
+        <button
+          id="btn-nav-historial-mobile"
+          onClick={() => onSelectModule('historial')}
+          className={`flex flex-col items-center justify-center h-full relative transition-colors cursor-pointer ${
+            activeModule === 'historial' ? 'text-white' : 'text-neutral-400 hover:text-neutral-200'
+          }`}
+        >
+          <History
+            className={`w-5 h-5 ${
+              activeModule === 'historial' ? 'text-[#D60000]' : 'text-neutral-400'
+            }`}
+          />
+          <span
+            className={`text-[10px] font-semibold mt-0.5 ${
+              activeModule === 'historial' ? 'text-white font-bold' : 'text-neutral-400'
+            }`}
+          >
+            Historial
+          </span>
+          {activeModule === 'historial' && (
+            <div className="absolute top-0 w-8 h-0.5 bg-[#D60000] rounded-full" />
+          )}
+        </button>
+
+        {/* 4. Module: Notificaciones */}
+        <button
+          id="btn-nav-notificaciones-mobile"
+          onClick={() => onSelectModule('notificaciones')}
+          className={`flex flex-col items-center justify-center h-full relative transition-colors cursor-pointer ${
+            activeModule === 'notificaciones' ? 'text-white' : 'text-neutral-400 hover:text-neutral-200'
+          }`}
+        >
+          <div className="relative">
+            <Bell
+              className={`w-5 h-5 ${
+                activeModule === 'notificaciones' ? 'text-[#D60000]' : 'text-neutral-400'
+              }`}
+            />
+            {unreadNotificationsCount > 0 && (
+              <span className="absolute -top-1 -right-2 min-w-[16px] h-4 px-1 rounded-full bg-[#D60000] text-white text-[9px] font-bold flex items-center justify-center animate-pulse">
+                {unreadNotificationsCount > 9 ? '9+' : unreadNotificationsCount}
+              </span>
+            )}
+          </div>
+          <span
+            className={`text-[10px] font-semibold mt-0.5 ${
+              activeModule === 'notificaciones' ? 'text-white font-bold' : 'text-neutral-400'
+            }`}
+          >
+            Alertas
+          </span>
+          {activeModule === 'notificaciones' && (
+            <div className="absolute top-0 w-8 h-0.5 bg-[#D60000] rounded-full" />
+          )}
+        </button>
+
+        {/* 5. Module: Empleados (if Admin) or Perfil */}
+        {isAdmin ? (
           <button
             id="btn-nav-empleados-mobile"
             onClick={() => onSelectModule('empleados')}
@@ -99,7 +154,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
               }`}
             />
             <span
-              className={`text-[10px] sm:text-[11px] font-semibold mt-0.5 ${
+              className={`text-[10px] font-semibold mt-0.5 ${
                 activeModule === 'empleados' ? 'text-white font-bold' : 'text-neutral-400'
               }`}
             >
@@ -109,57 +164,31 @@ export const BottomNav: React.FC<BottomNavProps> = ({
               <div className="absolute top-0 w-8 h-0.5 bg-[#D60000] rounded-full" />
             )}
           </button>
+        ) : (
+          <button
+            id="btn-nav-perfil-mobile"
+            onClick={() => onSelectModule('perfil')}
+            className={`flex flex-col items-center justify-center h-full relative transition-colors cursor-pointer ${
+              activeModule === 'perfil' ? 'text-white' : 'text-neutral-400 hover:text-neutral-200'
+            }`}
+          >
+            <User
+              className={`w-5 h-5 ${
+                activeModule === 'perfil' ? 'text-[#D60000]' : 'text-neutral-400'
+              }`}
+            />
+            <span
+              className={`text-[10px] font-semibold mt-0.5 ${
+                activeModule === 'perfil' ? 'text-white font-bold' : 'text-neutral-400'
+              }`}
+            >
+              Perfil
+            </span>
+            {activeModule === 'perfil' && (
+              <div className="absolute top-0 w-8 h-0.5 bg-[#D60000] rounded-full" />
+            )}
+          </button>
         )}
-
-        {/* 4. Module: Manual de Usuario */}
-        <button
-          id="btn-nav-manual-mobile"
-          onClick={() => onSelectModule('manual')}
-          className={`flex flex-col items-center justify-center h-full relative transition-colors cursor-pointer ${
-            activeModule === 'manual' ? 'text-white' : 'text-neutral-400 hover:text-neutral-200'
-          }`}
-        >
-          <BookOpen
-            className={`w-5 h-5 ${
-              activeModule === 'manual' ? 'text-[#D60000]' : 'text-neutral-400'
-            }`}
-          />
-          <span
-            className={`text-[10px] sm:text-[11px] font-semibold mt-0.5 ${
-              activeModule === 'manual' ? 'text-white font-bold' : 'text-neutral-400'
-            }`}
-          >
-            Manual
-          </span>
-          {activeModule === 'manual' && (
-            <div className="absolute top-0 w-8 h-0.5 bg-[#D60000] rounded-full" />
-          )}
-        </button>
-
-        {/* 5. Module: Perfil */}
-        <button
-          id="btn-nav-perfil-mobile"
-          onClick={() => onSelectModule('perfil')}
-          className={`flex flex-col items-center justify-center h-full relative transition-colors cursor-pointer ${
-            activeModule === 'perfil' ? 'text-white' : 'text-neutral-400 hover:text-neutral-200'
-          }`}
-        >
-          <User
-            className={`w-5 h-5 ${
-              activeModule === 'perfil' ? 'text-[#D60000]' : 'text-neutral-400'
-            }`}
-          />
-          <span
-            className={`text-[10px] sm:text-[11px] font-semibold mt-0.5 ${
-              activeModule === 'perfil' ? 'text-white font-bold' : 'text-neutral-400'
-            }`}
-          >
-            Perfil
-          </span>
-          {activeModule === 'perfil' && (
-            <div className="absolute top-0 w-8 h-0.5 bg-[#D60000] rounded-full" />
-          )}
-        </button>
       </div>
     </nav>
   );

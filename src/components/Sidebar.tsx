@@ -12,6 +12,8 @@ import {
   ShieldCheck,
   Wrench,
   BookOpen,
+  History,
+  Bell,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -24,6 +26,7 @@ interface SidebarProps {
   reportsCount: number;
   adminProfile: AdminProfile;
   onLogout: () => void;
+  unreadNotificationsCount?: number;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -36,6 +39,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   reportsCount,
   adminProfile,
   onLogout,
+  unreadNotificationsCount = 0,
 }) => {
   return (
     <aside
@@ -140,7 +144,55 @@ export const Sidebar: React.FC<SidebarProps> = ({
           )}
         </button>
 
-        {/* 3. Module: Empleados (ONLY FOR ADMIN ROLE) */}
+        {/* 3. Module: Historial de Órdenes de Trabajo */}
+        <button
+          onClick={() => onSelectModule('historial')}
+          title="Historial de Órdenes de Trabajo"
+          className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+            activeModule === 'historial'
+              ? 'bg-[#D60000]/15 text-white border border-[#D60000]/30 shadow-xs'
+              : 'text-neutral-400 hover:text-white hover:bg-neutral-800/70'
+          } ${isCollapsed ? 'justify-center' : ''}`}
+        >
+          <History
+            className={`w-5 h-5 shrink-0 ${
+              activeModule === 'historial' ? 'text-[#D60000]' : 'text-neutral-400'
+            }`}
+          />
+          {!isCollapsed && <span>Historial Órdenes</span>}
+        </button>
+
+        {/* 4. Module: Notificaciones */}
+        <button
+          onClick={() => onSelectModule('notificaciones')}
+          title="Historial de Notificaciones"
+          className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+            activeModule === 'notificaciones'
+              ? 'bg-[#D60000]/15 text-white border border-[#D60000]/30 shadow-xs'
+              : 'text-neutral-400 hover:text-white hover:bg-neutral-800/70'
+          } ${isCollapsed ? 'justify-center' : 'justify-between'}`}
+        >
+          <div className="flex items-center gap-3">
+            <div className="relative">
+              <Bell
+                className={`w-5 h-5 shrink-0 ${
+                  activeModule === 'notificaciones' ? 'text-[#D60000]' : 'text-neutral-400'
+                }`}
+              />
+              {unreadNotificationsCount > 0 && isCollapsed && (
+                <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-[#D60000] rounded-full animate-ping" />
+              )}
+            </div>
+            {!isCollapsed && <span>Notificaciones</span>}
+          </div>
+          {!isCollapsed && unreadNotificationsCount > 0 && (
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#D60000] text-white animate-pulse">
+              {unreadNotificationsCount}
+            </span>
+          )}
+        </button>
+
+        {/* 5. Module: Empleados (ONLY FOR ADMIN ROLE) */}
         {currentRole === 'admin' && (
           <button
             onClick={() => onSelectModule('empleados')}

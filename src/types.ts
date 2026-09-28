@@ -1,6 +1,8 @@
 export type VisitNumber = 1 | 2 | 3 | 4;
 
-export type ServiceStatus = 'Completado' | 'Pendiente Refacción' | 'En Revisión' | 'Garantía';
+export type ServiceStatus = 'En Revisión' | 'Completado' | 'Pendiente Refacción' | 'Garantía';
+
+export type ServiceLocation = 'campo' | 'sotex';
 
 export interface DamagedComponents {
   cabezal: boolean;
@@ -25,12 +27,15 @@ export interface EquipmentInfo {
 export interface ServiceReport {
   id: string;
   reportCode: string;   // e.g. "SOT-REP-CLG-01"
-  folio: string;        // e.g. "FOL-2024-001"
+  folio: string;        // e.g. "SOT-2026-001"
   empresa: string;
   fecha: string;        // YYYY-MM-DD
   direccion: string;
   telefono: string;
   numVisita: VisitNumber;
+  
+  // Location of service: 'campo' | 'sotex'
+  tipoServicio?: ServiceLocation;
   
   // Equipment
   equipo: EquipmentInfo;
@@ -43,6 +48,9 @@ export interface ServiceReport {
   pruebaCabezalImagen?: string; // Base64 data or image URL
   pruebaCabezalResultado?: string; // e.g. "Cabezal 100% OK", "Puntos muertos detectados"
   
+  // Multiple photographic evidence
+  evidenciasFotos?: string[];
+  
   // Client sign-off
   clienteNombre: string;
   clienteEmail: string;
@@ -51,6 +59,11 @@ export interface ServiceReport {
   // Technician / Engineer sign-off
   tecnicoNombre: string;
   tecnicoFirma?: string; // Data URL
+  tecnicoId?: string;
+  
+  // Technician Acceptance status
+  aceptadaPorTecnico?: boolean;
+  fechaAceptada?: string;
   
   // Additional dashboard tracking
   status: ServiceStatus;
@@ -60,7 +73,42 @@ export interface ServiceReport {
 
 export type UserRole = 'admin' | 'tecnico';
 
-export type ActiveModule = 'metricas' | 'reportes' | 'empleados' | 'perfil' | 'manual';
+export type ActiveModule =
+  | 'metricas'
+  | 'reportes'
+  | 'historial'
+  | 'notificaciones'
+  | 'empleados'
+  | 'perfil'
+  | 'manual';
+
+export interface FolioConfig {
+  prefijo: string;
+  ultimoNumero: number;
+  codigoFormato: string;
+  cerosPadding: number;
+}
+
+export interface SystemNotification {
+  id: string;
+  titulo: string;
+  mensaje: string;
+  fecha: string; // ISO string
+  tipo: 'nueva_orden' | 'orden_aceptada' | 'cambio_estatus' | 'sistema';
+  ordenId?: string;
+  folio?: string;
+  destinatarioRol: 'admin' | 'tecnico' | 'todos';
+  destinatarioTecnico?: string;
+  remitenteNombre?: string;
+  leida: boolean;
+  accionRequerida?: boolean;
+  detalles?: {
+    estatusAnterior?: ServiceStatus;
+    estatusNuevo?: ServiceStatus;
+    empresa?: string;
+    tipoServicio?: ServiceLocation;
+  };
+}
 
 export interface AdminProfile {
   nombre: string;

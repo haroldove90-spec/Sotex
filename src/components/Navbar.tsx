@@ -9,6 +9,9 @@ import {
   LogOut,
   ShieldCheck,
   Wrench,
+  Bell,
+  Hash,
+  History,
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -22,6 +25,8 @@ interface NavbarProps {
   isSidebarCollapsed: boolean;
   onToggleSidebar: () => void;
   onLogout: () => void;
+  unreadNotificationsCount?: number;
+  onOpenFolioConfig?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -35,6 +40,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   isSidebarCollapsed,
   onToggleSidebar,
   onLogout,
+  unreadNotificationsCount = 0,
+  onOpenFolioConfig,
 }) => {
   const getModuleTitle = () => {
     switch (activeModule) {
@@ -47,6 +54,16 @@ export const Navbar: React.FC<NavbarProps> = ({
         return {
           title: 'Reportes de Servicio',
           code: 'SOT-REP-CLG-01',
+        };
+      case 'historial':
+        return {
+          title: 'Historial de Órdenes',
+          code: 'SOT-HIST-01',
+        };
+      case 'notificaciones':
+        return {
+          title: 'Notificaciones en Tiempo Real',
+          code: 'SOT-NOTIF-01',
         };
       case 'empleados':
         return {
@@ -123,6 +140,36 @@ export const Navbar: React.FC<NavbarProps> = ({
           {/* Right Action buttons: PWA Install + Exports + New Report + Logout */}
           <div className="flex items-center gap-2 shrink-0">
             <PWAInstallButton />
+
+            {/* Admin Folio & Format Code Button */}
+            {currentRole === 'admin' && onOpenFolioConfig && (
+              <button
+                onClick={onOpenFolioConfig}
+                title="Configuración de Folio Oficial y Código de Formato Consecutivo"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-200 border border-neutral-700 transition-all cursor-pointer shadow-xs"
+              >
+                <Hash className="w-3.5 h-3.5 text-red-400" />
+                <span className="hidden lg:inline">Folios &amp; Formato</span>
+              </button>
+            )}
+
+            {/* Notifications Bell Button */}
+            <button
+              onClick={() => onSelectModule('notificaciones')}
+              title="Notificaciones en tiempo real"
+              className={`relative inline-flex items-center justify-center p-2 rounded-lg transition-colors cursor-pointer border ${
+                activeModule === 'notificaciones'
+                  ? 'bg-[#D60000] text-white border-[#D60000]'
+                  : 'bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white border-neutral-700'
+              }`}
+            >
+              <Bell className="w-4 h-4" />
+              {unreadNotificationsCount > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 bg-[#D60000] text-white rounded-full text-[10px] font-bold flex items-center justify-center border-2 border-[#212121] animate-pulse">
+                  {unreadNotificationsCount > 9 ? '9+' : unreadNotificationsCount}
+                </span>
+              )}
+            </button>
 
             {activeModule === 'reportes' && (
               <>

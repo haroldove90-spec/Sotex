@@ -60,6 +60,7 @@ CREATE TABLE IF NOT EXISTS public.service_reports (
     id TEXT PRIMARY KEY,
     report_code TEXT NOT NULL DEFAULT 'SOT-REP-CLG-01',
     folio TEXT NOT NULL,
+    tipo_servicio TEXT NOT NULL DEFAULT 'campo' CHECK (tipo_servicio IN ('campo', 'sotex')),
     empresa TEXT NOT NULL,
     fecha DATE NOT NULL,
     direccion TEXT DEFAULT '',
@@ -70,15 +71,26 @@ CREATE TABLE IF NOT EXISTS public.service_reports (
     descripcion_danos TEXT DEFAULT '',
     prueba_cabezal_resultado TEXT DEFAULT '',
     prueba_cabezal_imagen TEXT,
+    evidencias_fotos JSONB DEFAULT '[]'::jsonb,
     cliente_nombre TEXT DEFAULT '',
     cliente_email TEXT DEFAULT '',
     cliente_firma TEXT,
     tecnico_nombre TEXT DEFAULT '',
     tecnico_firma TEXT,
-    status TEXT NOT NULL DEFAULT 'Completado',
+    tecnico_id TEXT,
+    aceptada_por_tecnico BOOLEAN DEFAULT false,
+    fecha_aceptada TIMESTAMPTZ,
+    status TEXT NOT NULL DEFAULT 'En Revisión' CHECK (status IN ('En Revisión', 'Completado', 'Pendiente Refacción', 'Garantía')),
     observaciones_generales TEXT DEFAULT '',
     created_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
+
+-- Si la tabla ya existía, agregar columnas nuevas de forma idempotente:
+ALTER TABLE public.service_reports ADD COLUMN IF NOT EXISTS tipo_servicio TEXT DEFAULT 'campo';
+ALTER TABLE public.service_reports ADD COLUMN IF NOT EXISTS evidencias_fotos JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE public.service_reports ADD COLUMN IF NOT EXISTS aceptada_por_tecnico BOOLEAN DEFAULT false;
+ALTER TABLE public.service_reports ADD COLUMN IF NOT EXISTS fecha_aceptada TIMESTAMPTZ;
+ALTER TABLE public.service_reports ADD COLUMN IF NOT EXISTS tecnico_id TEXT;
 
 -- Habilitar RLS en reportes
 ALTER TABLE public.service_reports ENABLE ROW LEVEL SECURITY;
@@ -88,7 +100,52 @@ CREATE POLICY "Permitir todo en reportes"
 ON public.service_reports FOR ALL USING (true);
 
 
--- 3. INSERTAR CREDENCIALES SOLICITADAS (ROLES ADMIN)
+-- 3. TABLA DE CONFIGURACIÓN DE FOLIO OFICIAL Y CÓDIGO CONSECUTIVO
+CREATE TABLE IF NOT EXISTS public.configuracion_folios (
+    id TEXT PRIMARY KEY DEFAULT 'config_principal',
+    prefijo_folio TEXT DEFAULT 'SOT-2026-',
+    ultimo_folio_numero INTEGER DEFAULT 5,
+    codigo_formato_actual TEXT DEFAULT 'SOT-REP-CLG-01',
+    ceros_padding INTEGER DEFAULT 3,
+    updated_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
+);
+
+ALTER TABLE public.configuracion_folios ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Permitir todo en configuracion_folios" ON public.configuracion_folios;
+CREATE POLICY "Permitir todo en configuracion_folios"
+ON public.configuracion_folios FOR ALL USING (true);
+
+INSERT INTO public.configuracion_folios (id, prefijo_folio, ultimo_folio_numero, codigo_formato_actual, ceros_padding)
+VALUES ('config_principal', 'SOT-2026-', 5, 'SOT-REP-CLG-01', 3)
+ON CONFLICT (id) DO NOTHING;
+
+
+-- 4. TABLA DE NOTIFICACIONES EN TIEMPO REAL
+CREATE TABLE IF NOT EXISTS public.system_notifications (
+    id TEXT PRIMARY KEY,
+    titulo TEXT NOT NULL,
+    mensaje TEXT NOT NULL,
+    fecha TIMESTAMPTZ DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
+    tipo TEXT NOT NULL,
+    orden_id TEXT,
+    folio TEXT,
+    destinatario_rol TEXT NOT NULL,
+    destinatario_tecnico TEXT,
+    remitente_nombre TEXT,
+    leida BOOLEAN DEFAULT false,
+    accion_requerida BOOLEAN DEFAULT false,
+    created_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
+);
+
+ALTER TABLE public.system_notifications ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Permitir todo en system_notifications" ON public.system_notifications;
+CREATE POLICY "Permitir todo en system_notifications"
+ON public.system_notifications FOR ALL USING (true);
+
+
+-- 5. INSERTAR CREDENCIALES SOLICITADAS (ROLES ADMIN)
 -- Credencial 1: Harold Anguiano Morales
 INSERT INTO public.employees (
     id,

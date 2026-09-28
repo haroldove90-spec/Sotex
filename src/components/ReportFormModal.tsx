@@ -1,7 +1,31 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ServiceReport, VisitNumber, ServiceStatus, DamagedComponents, AdminProfile } from '../types';
+import {
+  ServiceReport,
+  VisitNumber,
+  ServiceStatus,
+  ServiceLocation,
+  DamagedComponents,
+  AdminProfile,
+  UserRole,
+  FolioConfig,
+} from '../types';
 import { SignaturePad } from './SignaturePad';
-import { X, Upload, Check, Printer, Camera, Trash2 } from 'lucide-react';
+import {
+  X,
+  Upload,
+  Check,
+  Printer,
+  Camera,
+  Trash2,
+  Loader2,
+  MapPin,
+  Building,
+  Image as ImageIcon,
+  Plus,
+  AlertCircle,
+} from 'lucide-react';
+import { compressImageFile } from '../utils/imageCompressor';
+import { getNextFolioPreview } from '../utils/folioManager';
 
 interface ReportFormModalProps {
   isOpen: boolean;
@@ -10,6 +34,10 @@ interface ReportFormModalProps {
   initialReport?: ServiceReport | null;
   existingReportsCount: number;
   defaultAdminProfile?: AdminProfile;
+  currentRole?: UserRole;
+  currentUserName?: string;
+  techniciansList?: string[];
+  folioConfig?: FolioConfig;
 }
 
 export const ReportFormModal: React.FC<ReportFormModalProps> = ({
@@ -19,23 +47,29 @@ export const ReportFormModal: React.FC<ReportFormModalProps> = ({
   initialReport,
   existingReportsCount,
   defaultAdminProfile,
+  currentRole = 'admin',
+  currentUserName = '',
+  techniciansList = [],
+  folioConfig,
 }) => {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const cameraInputRef = useRef<HTMLInputElement | null>(null);
+  const galleryInputRef = useRef<HTMLInputElement | null>(null);
 
   const getTodayString = () => {
     const d = new Date();
     return d.toISOString().split('T')[0];
   };
 
-  const generateDefaultFolio = () => {
-    const year = new Date().getFullYear();
-    const count = existingReportsCount + 1;
-    return `SOT-${year}-${String(count).padStart(3, '0')}`;
+  const getNextFolioData = () => {
+    const preview = getNextFolioPreview(folioConfig);
+    return preview;
   };
 
   // State
-  const [folio, setFolio] = useState(generateDefaultFolio());
+  const [folio, setFolio] = useState('');
   const [reportCode, setReportCode] = useState('SOT-REP-CLG-01');
+  const [tipoServicio, setTipoServicio] = useState<ServiceLocation>('campo');
   const [empresa, setEmpresa] = useState('');
   const [fecha, setFecha] = useState(getTodayString());
   const [direccion, setDireccion] = useState('');
@@ -49,7 +83,7 @@ export const ReportFormModal: React.FC<ReportFormModalProps> = ({
   const [dpi, setDpi] = useState('203');
   const [noSerie, setNoSerie] = useState('');
 
-  // Damages checklist (exactly matches the 9 items from the physical form)
+  // Damages checklist
   const [danos, setDanos] = useState<DamagedComponents>({
     cabezal: false,
     rodilloPrincipal: false,
@@ -69,18 +103,23 @@ export const ReportFormModal: React.FC<ReportFormModalProps> = ({
     'Prueba de impresión satisfactoria. Cabezal 100% operativo sin líneas blancas.'
   );
   const [pruebaCabezalImagen, setPruebaCabezalImagen] = useState<string | undefined>(undefined);
+  const [isCompressingImage, setIsCompressingImage] = useState(false);
+
+  // Photographic Evidence (Mobile camera or gallery)
+  const [evidenciasFotos, setEvidenciasFotos] = useState<string[]>([]);
+  const [isCompressingEvidence, setIsCompressingEvidence] = useState(false);
 
   // Client
   const [clienteNombre, setClienteNombre] = useState('');
   const [clienteEmail, setClienteEmail] = useState('');
   const [clienteFirma, setClienteFirma] = useState<string | undefined>(undefined);
 
-  // Engineer
-  const [tecnicoNombre, setTecnicoNombre] = useState('Ing. Técnico SOTEX');
+  // Engineer / Technician
+  const [tecnicoNombre, setTecnicoNombre] = useState('');
   const [tecnicoFirma, setTecnicoFirma] = useState<string | undefined>(undefined);
 
-  // Status
-  const [status, setStatus] = useState<ServiceStatus>('Completado');
+  // Status (Default: 'En Revisión' as first priority)
+  const [status, setStatus] = useState<ServiceStatus>('En Revisión');
   const [observacionesGenerales, setObservacionesGenerales] = useState('');
 
   // Validation
@@ -90,6 +129,7 @@ export const ReportFormModal: React.FC<ReportFormModalProps> = ({
     if (initialReport) {
       setFolio(initialReport.folio);
       setReportCode(initialReport.reportCode || 'SOT-REP-CLG-01');
+      setTipoServicio(initialReport.tipoServicio || 'campo');
       setEmpresa(initialReport.empresa);
       setFecha(initialReport.fecha);
       setDireccion(initialReport.direccion);
@@ -107,6 +147,7 @@ export const ReportFormModal: React.FC<ReportFormModalProps> = ({
 
       setPruebaCabezalResultado(initialReport.pruebaCabezalResultado || '');
       setPruebaCabezalImagen(initialReport.pruebaCabezalImagen);
+      setEvidenciasFotos(initialReport.evidenciasFotos || []);
 
       setClienteNombre(initialReport.clienteNombre);
       setClienteEmail(initialReport.clienteEmail);
@@ -115,12 +156,14 @@ export const ReportFormModal: React.FC<ReportFormModalProps> = ({
       setTecnicoNombre(initialReport.tecnicoNombre);
       setTecnicoFirma(initialReport.tecnicoFirma);
 
-      setStatus(initialReport.status);
+      setStatus(initialReport.status || 'En Revisión');
       setObservacionesGenerales(initialReport.observacionesGenerales || '');
     } else {
-      // Reset to defaults
-      setFolio(generateDefaultFolio());
-      setReportCode('SOT-REP-CLG-01');
+      // Reset to defaults for a new report
+      const nextData = getNextFolioData();
+      setFolio(nextData.folio);
+      setReportCode(nextData.reportCode);
+      setTipoServicio('campo');
       setEmpresa('');
       setFecha(getTodayString());
       setDireccion('');
@@ -143,18 +186,39 @@ export const ReportFormModal: React.FC<ReportFormModalProps> = ({
         otro: false,
       });
       setDescripcionDanos('');
-      setPruebaCabezalResultado('Prueba de impresión satisfactoria. Cabezal 100% operativo sin líneas blancas.');
+      setPruebaCabezalResultado(
+        'Prueba de impresión satisfactoria. Cabezal 100% operativo sin líneas blancas.'
+      );
       setPruebaCabezalImagen(undefined);
+      setEvidenciasFotos([]);
       setClienteNombre('');
       setClienteEmail('');
       setClienteFirma(undefined);
-      setTecnicoNombre(defaultAdminProfile?.nombre || 'Ing. Javier Rojas (SOTEX)');
+
+      // Pre-fill technician name: if current user is technician, assign to self automatically!
+      if (currentRole === 'tecnico') {
+        setTecnicoNombre(currentUserName || defaultAdminProfile?.nombre || 'Tec. Carlos Mendoza');
+      } else {
+        setTecnicoNombre(
+          techniciansList[0] || defaultAdminProfile?.nombre || 'Tec. Carlos Mendoza'
+        );
+      }
+
       setTecnicoFirma(defaultAdminProfile?.firmaDigital || undefined);
-      setStatus('Completado');
+      // "En Revisión" is in first place and default
+      setStatus('En Revisión');
       setObservacionesGenerales('');
     }
     setErrors({});
-  }, [initialReport, isOpen, existingReportsCount, defaultAdminProfile]);
+  }, [
+    initialReport,
+    isOpen,
+    existingReportsCount,
+    defaultAdminProfile,
+    currentRole,
+    currentUserName,
+    folioConfig,
+  ]);
 
   if (!isOpen) return null;
 
@@ -165,16 +229,64 @@ export const ReportFormModal: React.FC<ReportFormModalProps> = ({
     }));
   };
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Upload/compress printhead sample
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = (uploadEvent) => {
-      const result = uploadEvent.target?.result as string;
-      setPruebaCabezalImagen(result);
-    };
-    reader.readAsDataURL(file);
+    try {
+      setIsCompressingImage(true);
+      const compressedDataUrl = await compressImageFile(file, 1000, 1000, 0.75);
+      setPruebaCabezalImagen(compressedDataUrl);
+    } catch (err) {
+      console.warn('Error al optimizar imagen, usando método directo:', err);
+      const reader = new FileReader();
+      reader.onload = (uploadEvent) => {
+        const result = uploadEvent.target?.result as string;
+        setPruebaCabezalImagen(result);
+      };
+      reader.readAsDataURL(file);
+    } finally {
+      setIsCompressingImage(false);
+      if (e.target) e.target.value = '';
+    }
+  };
+
+  // Upload/compress evidence photos from camera or gallery
+  const handleEvidenceCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    try {
+      setIsCompressingEvidence(true);
+      const processed: string[] = [];
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        try {
+          const compressed = await compressImageFile(file, 900, 900, 0.72);
+          processed.push(compressed);
+        } catch {
+          // Fallback reading
+          const base64 = await new Promise<string>((resolve) => {
+            const reader = new FileReader();
+            reader.onload = (ev) => resolve(ev.target?.result as string);
+            reader.readAsDataURL(file);
+          });
+          processed.push(base64);
+        }
+      }
+
+      setEvidenciasFotos((prev) => [...prev, ...processed]);
+    } catch (err) {
+      console.warn('Error al procesar evidencias fotográficas:', err);
+    } finally {
+      setIsCompressingEvidence(false);
+      if (e.target) e.target.value = '';
+    }
+  };
+
+  const handleRemoveEvidence = (index: number) => {
+    setEvidenciasFotos((prev) => prev.filter((_, i) => i !== index));
   };
 
   const validate = () => {
@@ -186,6 +298,7 @@ export const ReportFormModal: React.FC<ReportFormModalProps> = ({
     if (!modelo.trim()) newErrors.modelo = 'Especificar modelo.';
     if (!noSerie.trim()) newErrors.noSerie = 'Indicar el número de serie.';
     if (!descripcionDanos.trim()) newErrors.descripcionDanos = 'Ingrese la descripción o diagnóstico.';
+    if (!tecnicoNombre.trim()) newErrors.tecnicoNombre = 'Indique el técnico asignado.';
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -199,7 +312,8 @@ export const ReportFormModal: React.FC<ReportFormModalProps> = ({
     const reportData: ServiceReport = {
       id: initialReport?.id || `rep-${Date.now()}`,
       reportCode,
-      folio: folio.trim() || generateDefaultFolio(),
+      folio: folio.trim() || getNextFolioData().folio,
+      tipoServicio,
       empresa: empresa.trim(),
       fecha,
       direccion: direccion.trim(),
@@ -216,11 +330,14 @@ export const ReportFormModal: React.FC<ReportFormModalProps> = ({
       descripcionDanos: descripcionDanos.trim(),
       pruebaCabezalResultado: pruebaCabezalResultado.trim(),
       pruebaCabezalImagen,
+      evidenciasFotos,
       clienteNombre: clienteNombre.trim(),
       clienteEmail: clienteEmail.trim(),
       clienteFirma,
       tecnicoNombre: tecnicoNombre.trim(),
       tecnicoFirma,
+      aceptadaPorTecnico: initialReport?.aceptadaPorTecnico ?? false,
+      fechaAceptada: initialReport?.fechaAceptada,
       status,
       observacionesGenerales: observacionesGenerales.trim(),
       createdAt: initialReport?.createdAt || new Date().toISOString(),
@@ -230,8 +347,8 @@ export const ReportFormModal: React.FC<ReportFormModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-2 sm:p-4 overflow-y-auto backdrop-blur-xs">
-      <div className="bg-white rounded-xl shadow-2xl max-w-4xl w-full my-6 overflow-hidden border border-slate-300 flex flex-col max-h-[92vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-2 sm:p-4 overflow-y-auto backdrop-blur-xs">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full my-6 overflow-hidden border border-slate-300 flex flex-col max-h-[92vh]">
         {/* Header Modal Bar */}
         <div className="bg-[#212121] text-white px-5 py-3.5 flex items-center justify-between border-b border-neutral-800">
           <div className="flex items-center gap-3">
@@ -243,19 +360,23 @@ export const ReportFormModal: React.FC<ReportFormModalProps> = ({
             />
             <div>
               <h2 className="text-sm font-bold text-slate-100 flex items-center gap-2">
-                <span>{initialReport ? 'Modificar Reporte de Servicio' : 'Nuevo Reporte de Servicio Cliente'}</span>
+                <span>
+                  {initialReport
+                    ? 'Modificar Orden de Trabajo'
+                    : 'Nueva Orden de Trabajo / Reporte de Servicio'}
+                </span>
                 <span className="text-xs font-mono font-normal bg-red-900/80 text-red-300 px-2 py-0.5 rounded border border-red-700">
                   {reportCode}
                 </span>
               </h2>
               <p className="text-[11px] text-slate-400">
-                Formato físico oficial para soporte en campo de impresoras térmicas
+                Formato institucional oficial para servicio técnico y diagnóstico de impresoras
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-white p-1 rounded-md hover:bg-slate-800 transition-colors"
+            className="text-slate-400 hover:text-white p-1 rounded-md hover:bg-slate-800 transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -264,16 +385,16 @@ export const ReportFormModal: React.FC<ReportFormModalProps> = ({
         {/* Form Body - Scrollable */}
         <div className="p-5 sm:p-6 overflow-y-auto space-y-5 bg-slate-50/50 text-slate-800">
           {/* Top Info Banner */}
-          <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-xs grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3.5">
+          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3.5">
             <div>
               <label className="block text-xs font-semibold text-slate-600 mb-1">
-                Folio Oficial
+                Folio Consecutivo
               </label>
               <input
                 type="text"
                 value={folio}
                 onChange={(e) => setFolio(e.target.value)}
-                placeholder="SOT-2024-001"
+                placeholder="SOT-2026-001"
                 className="w-full text-xs font-mono font-bold bg-slate-100 border border-slate-300 rounded px-2.5 py-1.5 focus:bg-white focus:ring-1 focus:ring-[#D60000] focus:border-[#D60000] focus:outline-hidden"
               />
             </div>
@@ -290,19 +411,20 @@ export const ReportFormModal: React.FC<ReportFormModalProps> = ({
               />
             </div>
 
+            {/* Estatus dropdown - EN REVISIÓN IS FIRST AND DEFAULT */}
             <div>
               <label className="block text-xs font-semibold text-slate-600 mb-1">
-                Estado del Reporte
+                Estado del Reporte *
               </label>
               <select
                 value={status}
                 onChange={(e) => setStatus(e.target.value as ServiceStatus)}
-                className="w-full text-xs font-medium bg-white border border-slate-300 rounded px-2.5 py-1.5 focus:ring-1 focus:ring-[#D60000] focus:border-[#D60000] focus:outline-hidden"
+                className="w-full text-xs font-bold bg-white border border-slate-300 rounded px-2.5 py-1.5 focus:ring-1 focus:ring-[#D60000] focus:border-[#D60000] focus:outline-hidden text-slate-800 cursor-pointer"
               >
-                <option value="Completado">Completado</option>
-                <option value="Pendiente Refacción">Pendiente Refacción</option>
-                <option value="En Revisión">En Revisión</option>
-                <option value="Garantía">Garantía</option>
+                <option value="En Revisión">1. En Revisión (Inicial)</option>
+                <option value="Completado">2. Completado</option>
+                <option value="Pendiente Refacción">3. Pendiente Refacción</option>
+                <option value="Garantía">4. Garantía</option>
               </select>
             </div>
 
@@ -322,8 +444,64 @@ export const ReportFormModal: React.FC<ReportFormModalProps> = ({
             </div>
           </div>
 
+          {/* Location of service: 'En campo' vs 'En Sotex' */}
+          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-2">
+            <label className="block text-xs font-bold text-slate-800 uppercase tracking-wider">
+              Lugar del Servicio *
+            </label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setTipoServicio('campo')}
+                className={`p-3 rounded-xl border flex items-center gap-3 transition-all cursor-pointer text-left ${
+                  tipoServicio === 'campo'
+                    ? 'border-[#D60000] bg-red-50/60 ring-2 ring-red-500/20 text-[#D60000]'
+                    : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
+                }`}
+              >
+                <div
+                  className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
+                    tipoServicio === 'campo' ? 'bg-[#D60000] text-white' : 'bg-slate-100 text-slate-600'
+                  }`}
+                >
+                  <MapPin className="w-5 h-5" />
+                </div>
+                <div>
+                  <span className="text-xs font-bold block">En Campo (Sitio del Cliente)</span>
+                  <span className="text-[11px] text-slate-500 block">
+                    Servicio técnico realizado directamente en las instalaciones del cliente
+                  </span>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setTipoServicio('sotex')}
+                className={`p-3 rounded-xl border flex items-center gap-3 transition-all cursor-pointer text-left ${
+                  tipoServicio === 'sotex'
+                    ? 'border-[#D60000] bg-red-50/60 ring-2 ring-red-500/20 text-[#D60000]'
+                    : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
+                }`}
+              >
+                <div
+                  className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
+                    tipoServicio === 'sotex' ? 'bg-[#D60000] text-white' : 'bg-slate-100 text-slate-600'
+                  }`}
+                >
+                  <Building className="w-5 h-5" />
+                </div>
+                <div>
+                  <span className="text-xs font-bold block">En Sotex (Taller / Laboratorio)</span>
+                  <span className="text-[11px] text-slate-500 block">
+                    Equipo ingresado al laboratorio de servicio y diagnóstico SOTEX
+                  </span>
+                </div>
+              </button>
+            </div>
+          </div>
+
           {/* Section: General Info (Empresa, Dirección, Tel, Num de visita) */}
-          <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-xs space-y-3">
+          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-3">
             <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5 border-b border-slate-100 pb-2">
               <span className="w-2 h-2 rounded-full bg-red-600" />
               Datos del Cliente y Visita
@@ -332,13 +510,13 @@ export const ReportFormModal: React.FC<ReportFormModalProps> = ({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Empresa *
+                  Empresa / Cliente *
                 </label>
                 <input
                   type="text"
                   value={empresa}
                   onChange={(e) => setEmpresa(e.target.value)}
-                  placeholder="Ej. PTD Logística y Empaque / Cliente"
+                  placeholder="Ej. FlexiTech del Bajío S.A. de C.V."
                   className={`w-full text-xs border rounded px-2.5 py-1.5 focus:ring-1 focus:ring-[#D60000] focus:border-[#D60000] focus:outline-hidden ${
                     errors.empresa ? 'border-red-500 ring-1 ring-red-500' : 'border-slate-300'
                   }`}
@@ -347,9 +525,7 @@ export const ReportFormModal: React.FC<ReportFormModalProps> = ({
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Teléfono
-                </label>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Teléfono</label>
                 <input
                   type="text"
                   value={telefono}
@@ -360,22 +536,20 @@ export const ReportFormModal: React.FC<ReportFormModalProps> = ({
               </div>
 
               <div className="md:col-span-2">
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Dirección
-                </label>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Dirección</label>
                 <input
                   type="text"
                   value={direccion}
                   onChange={(e) => setDireccion(e.target.value)}
-                  placeholder="Ej. Av. Las Torres #452, Col. El Álamo, Guadalajara, Jal."
+                  placeholder="Ej. Av. Las Torres #452, Parque Industrial El Salto, Jal."
                   className="w-full text-xs border border-slate-300 rounded px-2.5 py-1.5 focus:ring-1 focus:ring-[#D60000] focus:border-[#D60000] focus:outline-hidden"
                 />
               </div>
 
-              {/* Num. de visita - Matches physical 4 box layout [1] [2] [3] [4] */}
+              {/* Num. de visita */}
               <div className="md:col-span-2 pt-1">
                 <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                  Num. de visita (Seleccione la casilla correspondiente):
+                  Num. de visita:
                 </label>
                 <div className="flex items-center gap-2">
                   {([1, 2, 3, 4] as VisitNumber[]).map((v) => (
@@ -383,14 +557,14 @@ export const ReportFormModal: React.FC<ReportFormModalProps> = ({
                       key={v}
                       type="button"
                       onClick={() => setNumVisita(v)}
-                      className={`flex-1 sm:flex-initial sm:w-20 py-1.5 px-3 text-xs font-bold rounded border transition-all flex items-center justify-center gap-1.5 ${
+                      className={`flex-1 sm:flex-initial sm:w-24 py-1.5 px-3 text-xs font-bold rounded-lg border transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                         numVisita === v
-                          ? 'bg-[#212121] text-white border-[#212121] shadow-xs'
+                          ? 'bg-neutral-900 text-white border-neutral-900 shadow-xs'
                           : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
                       }`}
                     >
                       <span>Visita {v}</span>
-                      {numVisita === v && <Check className="w-3.5 h-3.5" />}
+                      {numVisita === v && <Check className="w-3.5 h-3.5 text-emerald-400" />}
                     </button>
                   ))}
                 </div>
@@ -398,8 +572,8 @@ export const ReportFormModal: React.FC<ReportFormModalProps> = ({
             </div>
           </div>
 
-          {/* Section: Equipment Table (Equipo | Marca | Modelo | DPI | No. de serie) */}
-          <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-xs space-y-3">
+          {/* Section: Equipment Table */}
+          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-3">
             <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5 border-b border-slate-100 pb-2">
               <span className="w-2 h-2 rounded-full bg-slate-900" />
               Datos del Equipo en Revisión
@@ -407,9 +581,7 @@ export const ReportFormModal: React.FC<ReportFormModalProps> = ({
 
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-2.5">
               <div className="md:col-span-1">
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Equipo *
-                </label>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Equipo *</label>
                 <input
                   type="text"
                   value={equipo}
@@ -420,9 +592,7 @@ export const ReportFormModal: React.FC<ReportFormModalProps> = ({
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Marca *
-                </label>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Marca *</label>
                 <input
                   type="text"
                   list="marcas-list"
@@ -443,9 +613,7 @@ export const ReportFormModal: React.FC<ReportFormModalProps> = ({
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Modelo *
-                </label>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Modelo *</label>
                 <input
                   type="text"
                   value={modelo}
@@ -456,9 +624,7 @@ export const ReportFormModal: React.FC<ReportFormModalProps> = ({
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  DPI (Resolución)
-                </label>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">DPI</label>
                 <select
                   value={dpi}
                   onChange={(e) => setDpi(e.target.value)}
@@ -486,130 +652,120 @@ export const ReportFormModal: React.FC<ReportFormModalProps> = ({
             </div>
           </div>
 
-          {/* Section: Daños detectados durante revisión (Exact 3x3 layout) */}
-          <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-xs space-y-3">
-            <div className="bg-slate-900 text-white px-3 py-1.5 rounded-t -mx-4 -mt-4 mb-3 flex items-center justify-between">
+          {/* Section: Daños detectados durante revisión */}
+          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-3">
+            <div className="bg-neutral-900 text-white px-3 py-1.5 rounded-t-lg -mx-4 -mt-4 mb-3 flex items-center justify-between">
               <span className="text-xs font-bold uppercase tracking-wider">
                 Daños detectados durante revisión
               </span>
               <span className="text-[10px] text-slate-300 font-normal">
-                Marque las casillas con anomalías o desgastes
+                Marque las casillas con anomalías
               </span>
             </div>
 
-            {/* 3 Columns x 3 Rows matching physical sheet */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-50 p-3 rounded-md border border-slate-200">
-              {/* Columna 1 */}
-              <div className="space-y-2.5">
-                <label className="flex items-center justify-between p-2 rounded bg-white border border-slate-200 hover:border-slate-300 cursor-pointer select-none">
+            {/* 3x3 Checkboxes */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 bg-slate-50 p-3 rounded-lg border border-slate-200">
+              <div className="space-y-2">
+                <label className="flex items-center justify-between p-2 rounded-lg bg-white border border-slate-200 hover:border-slate-300 cursor-pointer select-none">
                   <span className="text-xs font-medium text-slate-800">Cabezal</span>
                   <input
                     type="checkbox"
                     checked={danos.cabezal}
                     onChange={() => toggleDano('cabezal')}
-                    className="w-4 h-4 text-red-600 rounded border-slate-300 focus:ring-red-500"
+                    className="w-4 h-4 text-red-600 rounded border-slate-300"
                   />
                 </label>
-
-                <label className="flex items-center justify-between p-2 rounded bg-white border border-slate-200 hover:border-slate-300 cursor-pointer select-none">
+                <label className="flex items-center justify-between p-2 rounded-lg bg-white border border-slate-200 hover:border-slate-300 cursor-pointer select-none">
                   <span className="text-xs font-medium text-slate-800">Rodillo principal</span>
                   <input
                     type="checkbox"
                     checked={danos.rodilloPrincipal}
                     onChange={() => toggleDano('rodilloPrincipal')}
-                    className="w-4 h-4 text-red-600 rounded border-slate-300 focus:ring-red-500"
+                    className="w-4 h-4 text-red-600 rounded border-slate-300"
                   />
                 </label>
-
-                <label className="flex items-center justify-between p-2 rounded bg-white border border-slate-200 hover:border-slate-300 cursor-pointer select-none">
+                <label className="flex items-center justify-between p-2 rounded-lg bg-white border border-slate-200 hover:border-slate-300 cursor-pointer select-none">
                   <span className="text-xs font-medium text-slate-800">Display</span>
                   <input
                     type="checkbox"
                     checked={danos.display}
                     onChange={() => toggleDano('display')}
-                    className="w-4 h-4 text-red-600 rounded border-slate-300 focus:ring-red-500"
+                    className="w-4 h-4 text-red-600 rounded border-slate-300"
                   />
                 </label>
               </div>
 
-              {/* Columna 2 */}
-              <div className="space-y-2.5">
-                <label className="flex items-center justify-between p-2 rounded bg-white border border-slate-200 hover:border-slate-300 cursor-pointer select-none">
+              <div className="space-y-2">
+                <label className="flex items-center justify-between p-2 rounded-lg bg-white border border-slate-200 hover:border-slate-300 cursor-pointer select-none">
                   <span className="text-xs font-medium text-slate-800">Sensor de papel</span>
                   <input
                     type="checkbox"
                     checked={danos.sensorPapel}
                     onChange={() => toggleDano('sensorPapel')}
-                    className="w-4 h-4 text-red-600 rounded border-slate-300 focus:ring-red-500"
+                    className="w-4 h-4 text-red-600 rounded border-slate-300"
                   />
                 </label>
-
-                <label className="flex items-center justify-between p-2 rounded bg-white border border-slate-200 hover:border-slate-300 cursor-pointer select-none">
+                <label className="flex items-center justify-between p-2 rounded-lg bg-white border border-slate-200 hover:border-slate-300 cursor-pointer select-none">
                   <span className="text-xs font-medium text-slate-800">Sensor de ribbon</span>
                   <input
                     type="checkbox"
                     checked={danos.sensorRibbon}
                     onChange={() => toggleDano('sensorRibbon')}
-                    className="w-4 h-4 text-red-600 rounded border-slate-300 focus:ring-red-500"
+                    className="w-4 h-4 text-red-600 rounded border-slate-300"
                   />
                 </label>
-
-                <label className="flex items-center justify-between p-2 rounded bg-white border border-slate-200 hover:border-slate-300 cursor-pointer select-none">
+                <label className="flex items-center justify-between p-2 rounded-lg bg-white border border-slate-200 hover:border-slate-300 cursor-pointer select-none">
                   <span className="text-xs font-medium text-slate-800">Bandas</span>
                   <input
                     type="checkbox"
                     checked={danos.bandas}
                     onChange={() => toggleDano('bandas')}
-                    className="w-4 h-4 text-red-600 rounded border-slate-300 focus:ring-red-500"
+                    className="w-4 h-4 text-red-600 rounded border-slate-300"
                   />
                 </label>
               </div>
 
-              {/* Columna 3 */}
-              <div className="space-y-2.5">
-                <label className="flex items-center justify-between p-2 rounded bg-white border border-slate-200 hover:border-slate-300 cursor-pointer select-none">
+              <div className="space-y-2">
+                <label className="flex items-center justify-between p-2 rounded-lg bg-white border border-slate-200 hover:border-slate-300 cursor-pointer select-none">
                   <span className="text-xs font-medium text-slate-800">Cutter</span>
                   <input
                     type="checkbox"
                     checked={danos.cutter}
                     onChange={() => toggleDano('cutter')}
-                    className="w-4 h-4 text-red-600 rounded border-slate-300 focus:ring-red-500"
+                    className="w-4 h-4 text-red-600 rounded border-slate-300"
                   />
                 </label>
-
-                <label className="flex items-center justify-between p-2 rounded bg-white border border-slate-200 hover:border-slate-300 cursor-pointer select-none">
+                <label className="flex items-center justify-between p-2 rounded-lg bg-white border border-slate-200 hover:border-slate-300 cursor-pointer select-none">
                   <span className="text-xs font-medium text-slate-800">Rebobinador</span>
                   <input
                     type="checkbox"
                     checked={danos.rebobinador}
                     onChange={() => toggleDano('rebobinador')}
-                    className="w-4 h-4 text-red-600 rounded border-slate-300 focus:ring-red-500"
+                    className="w-4 h-4 text-red-600 rounded border-slate-300"
                   />
                 </label>
-
-                <label className="flex items-center justify-between p-2 rounded bg-white border border-slate-200 hover:border-slate-300 cursor-pointer select-none">
+                <label className="flex items-center justify-between p-2 rounded-lg bg-white border border-slate-200 hover:border-slate-300 cursor-pointer select-none">
                   <span className="text-xs font-medium text-slate-800">Otro</span>
                   <input
                     type="checkbox"
                     checked={danos.otro}
                     onChange={() => toggleDano('otro')}
-                    className="w-4 h-4 text-red-600 rounded border-slate-300 focus:ring-red-500"
+                    className="w-4 h-4 text-red-600 rounded border-slate-300"
                   />
                 </label>
               </div>
             </div>
 
-            {/* Describa: */}
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1">
-                Describa: (Detalle el diagnóstico, causas, ajustes o refacciones necesarias) *
+                Describa: (Detalle diagnóstico, causas, desgastes o refacciones) *
               </label>
               <textarea
                 rows={3}
                 value={descripcionDanos}
                 onChange={(e) => setDescripcionDanos(e.target.value)}
-                placeholder="Ej. Se realiza mantenimiento preventivo y ajuste en sensor de papel. Limpieza profunda en rodillo y calibración de ribbon..."
-                className={`w-full text-xs p-2.5 border rounded-md focus:ring-1 focus:ring-[#D60000] focus:border-[#D60000] focus:outline-hidden leading-relaxed bg-[linear-gradient(transparent_27px,#e2e8f0_28px)] bg-[size:100%_28px] ${
+                placeholder="Ej. Diagnóstico: rodillo principal desgastado con acumulación de adhesivo. Se realiza limpieza profunda..."
+                className={`w-full text-xs p-2.5 border rounded-lg focus:ring-1 focus:ring-[#D60000] focus:border-[#D60000] focus:outline-hidden ${
                   errors.descripcionDanos ? 'border-red-500 ring-1 ring-red-500' : 'border-slate-300'
                 }`}
               />
@@ -619,29 +775,124 @@ export const ReportFormModal: React.FC<ReportFormModalProps> = ({
             </div>
           </div>
 
+          {/* Section: Multiple Photographic Evidences from Mobile Camera & Files */}
+          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-3">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+              <div className="flex items-center gap-2">
+                <Camera className="w-4 h-4 text-[#D60000]" />
+                <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+                  Evidencias Fotográficas (Cámara Móvil / Galería)
+                </h3>
+              </div>
+              <span className="text-[11px] font-semibold text-slate-500">
+                {evidenciasFotos.length} foto{evidenciasFotos.length === 1 ? '' : 's'} adjunta{evidenciasFotos.length === 1 ? '' : 's'}
+              </span>
+            </div>
+
+            <p className="text-[11px] text-slate-500">
+              Toma fotografías en tiempo real con la cámara de tu celular o sube fotos desde la galería como respaldo técnico del estado del equipo.
+            </p>
+
+            {/* Hidden Inputs for Camera and File Upload */}
+            <input
+              ref={cameraInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={handleEvidenceCapture}
+              className="hidden"
+            />
+            <input
+              ref={galleryInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              onChange={handleEvidenceCapture}
+              className="hidden"
+            />
+
+            {/* Camera & Upload Action Buttons */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                type="button"
+                disabled={isCompressingEvidence}
+                onClick={() => cameraInputRef.current?.click()}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white shadow-xs transition-transform active:scale-95 disabled:opacity-60 cursor-pointer"
+              >
+                {isCompressingEvidence ? (
+                  <Loader2 className="w-4 h-4 animate-spin text-white" />
+                ) : (
+                  <Camera className="w-4 h-4 text-emerald-400" />
+                )}
+                <span>Tomar Foto con Cámara</span>
+              </button>
+
+              <button
+                type="button"
+                disabled={isCompressingEvidence}
+                onClick={() => galleryInputRef.current?.click()}
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 transition-colors disabled:opacity-60 cursor-pointer"
+              >
+                <ImageIcon className="w-4 h-4 text-slate-500" />
+                <span>Subir Fotos de Evidencia</span>
+              </button>
+            </div>
+
+            {/* Photos Preview Gallery */}
+            {evidenciasFotos.length > 0 && (
+              <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3 pt-2">
+                {evidenciasFotos.map((foto, idx) => (
+                  <div
+                    key={idx}
+                    className="relative group rounded-xl overflow-hidden border border-slate-200 bg-slate-100 aspect-square flex items-center justify-center shadow-xs"
+                  >
+                    <img
+                      src={foto}
+                      alt={`Evidencia ${idx + 1}`}
+                      className="w-full h-full object-cover"
+                    />
+                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveEvidence(idx)}
+                        title="Eliminar foto"
+                        className="p-1.5 rounded-full bg-rose-600 hover:bg-rose-700 text-white shadow-md cursor-pointer transition-transform hover:scale-110"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                    <span className="absolute bottom-1 left-1 bg-black/60 text-white text-[9px] px-1.5 py-0.5 rounded font-mono">
+                      #{idx + 1}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           {/* Section: Prueba de impresión del cabezal */}
-          <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-xs space-y-3">
-            <div className="bg-slate-900 text-white px-3 py-1.5 rounded-t -mx-4 -mt-4 mb-3 flex items-center justify-between">
+          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-3">
+            <div className="bg-neutral-900 text-white px-3 py-1.5 rounded-t-lg -mx-4 -mt-4 mb-3 flex items-center justify-between">
               <span className="text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
                 <Printer className="w-3.5 h-3.5" />
-                Prueba de impresión del cabezal
+                Prueba de impresión del cabezal térmico
               </span>
               <span className="text-[10px] text-slate-300 font-normal">
-                Verificación de puntos térmicos y calidad de impresión
+                Verificación de puntos térmicos y calidad
               </span>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Diagnóstico y Resultado de la Prueba de Cabezal
+                  Diagnóstico y Resultado de la Prueba
                 </label>
                 <textarea
                   rows={2}
                   value={pruebaCabezalResultado}
                   onChange={(e) => setPruebaCabezalResultado(e.target.value)}
-                  placeholder="Cabezal 100% operativo sin puntos muertos o quemados..."
-                  className="w-full text-xs border border-slate-300 rounded p-2 focus:ring-1 focus:ring-[#D60000] focus:border-[#D60000] focus:outline-hidden"
+                  placeholder="Cabezal 100% operativo sin puntos muertos..."
+                  className="w-full text-xs border border-slate-300 rounded-lg p-2 focus:ring-1 focus:ring-[#D60000] focus:border-[#D60000] focus:outline-hidden"
                 />
 
                 <div className="mt-2.5 flex items-center gap-2">
@@ -654,27 +905,37 @@ export const ReportFormModal: React.FC<ReportFormModalProps> = ({
                   />
                   <button
                     type="button"
+                    disabled={isCompressingImage}
                     onClick={() => fileInputRef.current?.click()}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 transition-colors"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 transition-colors disabled:opacity-60 cursor-pointer"
                   >
-                    <Upload className="w-3.5 h-3.5" />
-                    Adjuntar Foto o Escaneo de Muestra
+                    {isCompressingImage ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin text-[#D60000]" />
+                        Optimizando...
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="w-3.5 h-3.5" />
+                        Adjuntar Muestra de Impresión
+                      </>
+                    )}
                   </button>
                   {pruebaCabezalImagen && (
                     <button
                       type="button"
                       onClick={() => setPruebaCabezalImagen(undefined)}
-                      className="inline-flex items-center gap-1 px-2 py-1.5 text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded"
+                      className="inline-flex items-center gap-1 px-2 py-1.5 text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded cursor-pointer"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
-                      Quitar imagen
+                      Quitar
                     </button>
                   )}
                 </div>
               </div>
 
-              {/* Preview box representing the physical test sheet area */}
-              <div className="border border-dashed border-slate-300 bg-slate-50 rounded-md p-3 flex flex-col items-center justify-center min-h-[110px] text-center">
+              {/* Preview */}
+              <div className="border border-dashed border-slate-300 bg-slate-50 rounded-xl p-3 flex flex-col items-center justify-center min-h-[110px] text-center">
                 {pruebaCabezalImagen ? (
                   <div className="relative w-full h-full max-h-36 flex items-center justify-center overflow-hidden">
                     <img
@@ -686,9 +947,11 @@ export const ReportFormModal: React.FC<ReportFormModalProps> = ({
                 ) : (
                   <div className="text-slate-400 space-y-1">
                     <Printer className="w-6 h-6 mx-auto opacity-40" />
-                    <p className="text-[11px] font-medium text-slate-600">Área de comprobante de cabezal térmico</p>
+                    <p className="text-[11px] font-medium text-slate-600">
+                      Área de comprobante de cabezal térmico
+                    </p>
                     <p className="text-[10px] text-slate-400">
-                      Puede adjuntar una fotografía de la etiqueta de prueba o se generará el patrón técnico en el PDF
+                      Fotografía de etiqueta de prueba o patrón técnico generado
                     </p>
                   </div>
                 )}
@@ -696,8 +959,8 @@ export const ReportFormModal: React.FC<ReportFormModalProps> = ({
             </div>
           </div>
 
-          {/* Section: Signatures & Contact Info (Matches Footer of Image) */}
-          <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-xs space-y-3">
+          {/* Section: Signatures & Contact Info */}
+          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-3">
             <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5 border-b border-slate-100 pb-2">
               <span className="w-2 h-2 rounded-full bg-emerald-600" />
               Firmas de Conformidad y Recepción
@@ -705,7 +968,7 @@ export const ReportFormModal: React.FC<ReportFormModalProps> = ({
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               {/* Cliente */}
-              <div className="border border-slate-200 rounded-lg p-3 bg-slate-50/50 space-y-2.5">
+              <div className="border border-slate-200 rounded-xl p-3 bg-slate-50/50 space-y-2.5">
                 <span className="text-xs font-bold text-slate-800 block border-b border-slate-200 pb-1">
                   Nombre, firma, correo (Cliente)
                 </span>
@@ -741,27 +1004,55 @@ export const ReportFormModal: React.FC<ReportFormModalProps> = ({
                 />
               </div>
 
-              {/* Ingeniero SOTEX */}
-              <div className="border border-slate-200 rounded-lg p-3 bg-slate-50/50 space-y-2.5">
+              {/* Ingeniero / Técnico SOTEX */}
+              <div className="border border-slate-200 rounded-xl p-3 bg-slate-50/50 space-y-2.5">
                 <span className="text-xs font-bold text-slate-800 block border-b border-slate-200 pb-1">
-                  Nombre y firma (Ing. SOTEX)
+                  Técnico Asignado y Firma (Ing. SOTEX) *
                 </span>
                 <div>
                   <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">
-                    Nombre del Ingeniero Técnico
+                    Nombre del Técnico / Ingeniero *
                   </label>
-                  <input
-                    type="text"
-                    value={tecnicoNombre}
-                    onChange={(e) => setTecnicoNombre(e.target.value)}
-                    placeholder="Ing. Javier Rojas"
-                    className="w-full text-xs border border-slate-300 rounded px-2 py-1 bg-white focus:ring-1 focus:ring-[#D60000] focus:border-[#D60000] focus:outline-hidden"
-                  />
+                  {currentRole === 'admin' && techniciansList.length > 0 ? (
+                    <div className="space-y-1">
+                      <select
+                        value={tecnicoNombre}
+                        onChange={(e) => setTecnicoNombre(e.target.value)}
+                        className="w-full text-xs border border-slate-300 rounded px-2 py-1.5 bg-white focus:ring-1 focus:ring-[#D60000] focus:border-[#D60000] focus:outline-hidden cursor-pointer"
+                      >
+                        {techniciansList.map((t) => (
+                          <option key={t} value={t}>
+                            {t}
+                          </option>
+                        ))}
+                      </select>
+                      <span className="text-[10px] text-slate-500">
+                        El técnico recibirá notificación flotante con sonido de alerta.
+                      </span>
+                    </div>
+                  ) : (
+                    <input
+                      type="text"
+                      value={tecnicoNombre}
+                      onChange={(e) => setTecnicoNombre(e.target.value)}
+                      placeholder="Tec. Carlos Mendoza"
+                      className="w-full text-xs border border-slate-300 rounded px-2 py-1 bg-white focus:ring-1 focus:ring-[#D60000] focus:border-[#D60000] focus:outline-hidden font-medium"
+                    />
+                  )}
+                  {errors.tecnicoNombre && (
+                    <p className="text-[10px] text-red-600 mt-0.5">{errors.tecnicoNombre}</p>
+                  )}
                 </div>
-                <div className="text-[11px] text-slate-500 bg-slate-100 p-1.5 rounded border border-slate-200">
-                  <p><strong>Contacto SOTEX:</strong> soporteqdl@sotex.com.mx</p>
-                  <p><strong>Portal:</strong> www.sotex.com.mx</p>
+
+                <div className="text-[11px] text-slate-500 bg-slate-100 p-2 rounded-lg border border-slate-200">
+                  <p>
+                    <strong>Contacto SOTEX:</strong> soporteqdl@sotex.com.mx
+                  </p>
+                  <p>
+                    <strong>Portal:</strong> www.sotex.com.mx
+                  </p>
                 </div>
+
                 <SignaturePad
                   label="Firma del Ingeniero SOTEX"
                   initialSignature={tecnicoFirma}
@@ -778,7 +1069,7 @@ export const ReportFormModal: React.FC<ReportFormModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded-md hover:bg-slate-50 transition-colors shadow-2xs"
+            className="px-4 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors shadow-2xs cursor-pointer"
           >
             Cancelar
           </button>
@@ -787,18 +1078,18 @@ export const ReportFormModal: React.FC<ReportFormModalProps> = ({
             <button
               type="button"
               onClick={() => handleSubmit(false)}
-              className="px-4 py-2 text-xs font-semibold text-white bg-slate-800 hover:bg-slate-700 rounded-md shadow-xs transition-colors"
+              className="px-4 py-2 text-xs font-semibold text-white bg-slate-800 hover:bg-slate-700 rounded-lg shadow-xs transition-colors cursor-pointer"
             >
-              Guardar Registro
+              Guardar Orden
             </button>
 
             <button
               type="button"
               onClick={() => handleSubmit(true)}
-              className="px-4 py-2 text-xs font-semibold text-white bg-[#D60000] hover:bg-[#b50000] rounded-md shadow-md transition-colors flex items-center gap-1.5"
+              className="px-4 py-2 text-xs font-bold text-white bg-[#D60000] hover:bg-[#b50000] rounded-lg shadow-md transition-colors flex items-center gap-1.5 cursor-pointer active:scale-95"
             >
               <Printer className="w-3.5 h-3.5" />
-              Guardar y Exportar a PDF
+              Guardar y Descargar PDF
             </button>
           </div>
         </div>

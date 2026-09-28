@@ -125,12 +125,12 @@ export const ReportsTable: React.FC<ReportsTableProps> = ({
 
   const getStatusBadgeClass = (status: string) => {
     switch (status) {
+      case 'En Revisión':
+        return 'bg-amber-50 text-amber-800 border-amber-300';
       case 'Completado':
         return 'bg-emerald-50 text-emerald-700 border-emerald-200';
       case 'Pendiente Refacción':
-        return 'bg-amber-50 text-amber-700 border-amber-200';
-      case 'En Revisión':
-        return 'bg-zinc-100 text-zinc-800 border-zinc-300';
+        return 'bg-rose-50 text-rose-700 border-rose-200';
       case 'Garantía':
         return 'bg-purple-50 text-purple-700 border-purple-200';
       default:
@@ -182,10 +182,10 @@ export const ReportsTable: React.FC<ReportsTableProps> = ({
                 className="text-xs bg-transparent font-medium text-slate-800 focus:outline-hidden cursor-pointer"
               >
                 <option value="ALL">Todos los Estados</option>
-                <option value="Completado">Completado</option>
-                <option value="Pendiente Refacción">Pendiente Refacción</option>
-                <option value="En Revisión">En Revisión</option>
-                <option value="Garantía">Garantía</option>
+                <option value="En Revisión">1. En Revisión (Prioritario)</option>
+                <option value="Completado">2. Completado</option>
+                <option value="Pendiente Refacción">3. Pendiente Refacción</option>
+                <option value="Garantía">4. Garantía</option>
               </select>
             </div>
 
@@ -397,13 +397,31 @@ export const ReportsTable: React.FC<ReportsTableProps> = ({
 
                     {/* Status */}
                     <td className="py-3 px-3 whitespace-nowrap">
-                      <span
-                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-semibold border ${getStatusBadgeClass(
-                          rep.status
-                        )}`}
-                      >
-                        {rep.status}
-                      </span>
+                      <div className="flex flex-col gap-1 items-start">
+                        <span
+                          className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold border ${getStatusBadgeClass(
+                            rep.status
+                          )}`}
+                        >
+                          {rep.status}
+                        </span>
+                        {rep.tipoServicio && (
+                          <span
+                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-semibold border ${
+                              rep.tipoServicio === 'campo'
+                                ? 'bg-sky-50 text-sky-700 border-sky-200'
+                                : 'bg-purple-50 text-purple-700 border-purple-200'
+                            }`}
+                          >
+                            {rep.tipoServicio === 'campo' ? '📍 En Campo' : '🏢 En Sotex'}
+                          </span>
+                        )}
+                        {rep.aceptadaPorTecnico && (
+                          <span className="inline-flex items-center gap-0.5 text-[9px] font-bold text-emerald-600">
+                            ✓ Aceptada por técnico
+                          </span>
+                        )}
+                      </div>
                     </td>
 
                     {/* Actions */}
