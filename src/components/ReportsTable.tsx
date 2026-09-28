@@ -22,7 +22,8 @@ interface ReportsTableProps {
   reports: ServiceReport[];
   onView: (report: ServiceReport) => void;
   onEdit: (report: ServiceReport) => void;
-  onDelete: (id: string) => void;
+  onDelete: (report: ServiceReport) => void;
+  onBulkDelete?: (reports: ServiceReport[]) => void;
   onNewReport: () => void;
 }
 
@@ -31,6 +32,7 @@ export const ReportsTable: React.FC<ReportsTableProps> = ({
   onView,
   onEdit,
   onDelete,
+  onBulkDelete,
   onNewReport,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -96,6 +98,14 @@ export const ReportsTable: React.FC<ReportsTableProps> = ({
     const selected = reports.filter((r) => selectedIds.includes(r.id));
     if (selected.length === 0) return;
     exportReportsToExcel(selected, `Reportes_SOTEX_Seleccion_${selected.length}.xlsx`);
+  };
+
+  const handleBulkDelete = () => {
+    const selected = reports.filter((r) => selectedIds.includes(r.id));
+    if (selected.length === 0) return;
+    if (onBulkDelete) {
+      onBulkDelete(selected);
+    }
   };
 
   const getDamagedBadges = (danos?: DamagedComponents) => {
@@ -218,21 +228,33 @@ export const ReportsTable: React.FC<ReportsTableProps> = ({
 
         {/* Multi-selection Bar */}
         {selectedIds.length > 0 && (
-          <div className="bg-[#212121] border border-neutral-800 rounded-lg px-3.5 py-2.5 flex items-center justify-between text-xs text-white shadow-sm">
+          <div className="bg-[#212121] border border-neutral-800 rounded-lg px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs text-white shadow-sm">
             <span className="font-semibold text-neutral-200">
               {selectedIds.length} registro(s) seleccionado(s)
             </span>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <button
+                type="button"
                 onClick={handleExportSelectedExcel}
-                className="inline-flex items-center gap-1 px-3 py-1.5 bg-emerald-700 text-white rounded font-semibold hover:bg-emerald-600 transition-colors shadow-2xs"
+                className="inline-flex items-center gap-1 px-3 py-1.5 bg-emerald-700 text-white rounded font-semibold hover:bg-emerald-600 transition-colors shadow-2xs cursor-pointer"
               >
                 <FileSpreadsheet className="w-3.5 h-3.5" />
-                Exportar Selección a Excel
+                Exportar a Excel
               </button>
+              {onBulkDelete && (
+                <button
+                  type="button"
+                  onClick={handleBulkDelete}
+                  className="inline-flex items-center gap-1 px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded font-bold transition-colors shadow-2xs cursor-pointer"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Borrar de Raíz ({selectedIds.length})
+                </button>
+              )}
               <button
+                type="button"
                 onClick={() => setSelectedIds([])}
-                className="text-neutral-400 hover:text-white underline px-2 transition-colors"
+                className="text-neutral-400 hover:text-white underline px-2 transition-colors cursor-pointer"
               >
                 Deseleccionar
               </button>
@@ -420,9 +442,10 @@ export const ReportsTable: React.FC<ReportsTableProps> = ({
                         </button>
 
                         <button
-                          onClick={() => onDelete(rep.id)}
-                          title="Eliminar registro"
-                          className="p-1.5 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                          type="button"
+                          onClick={() => onDelete(rep)}
+                          title="Borrar de raíz este reporte"
+                          className="p-1.5 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>

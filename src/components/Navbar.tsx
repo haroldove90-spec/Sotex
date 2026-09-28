@@ -58,6 +58,11 @@ export const Navbar: React.FC<NavbarProps> = ({
           title: 'Perfil',
           code: 'SOT-PER-01',
         };
+      case 'manual':
+        return {
+          title: currentRole === 'admin' ? 'Manual del Administrador' : 'Manual del Técnico',
+          code: currentRole === 'admin' ? 'SOT-MAN-ADM-01' : 'SOT-MAN-TEC-01',
+        };
     }
   };
 

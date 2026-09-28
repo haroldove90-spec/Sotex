@@ -12,6 +12,7 @@ import {
   LogOut,
   ShieldCheck,
   Wrench,
+  BookOpen,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -176,6 +177,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
             }`}
           />
           {!isCollapsed && <span>Perfil</span>}
+        </button>
+
+        {/* 5. Module: Manual de Usuario */}
+        <button
+          onClick={() => onSelectModule('manual')}
+          title="Manual de Usuario"
+          className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+            activeModule === 'manual'
+              ? 'bg-[#D60000]/15 text-white border border-[#D60000]/30 shadow-xs'
+              : 'text-neutral-400 hover:text-white hover:bg-neutral-800/70'
+          } ${isCollapsed ? 'justify-center' : ''}`}
+        >
+          <BookOpen
+            className={`w-5 h-5 shrink-0 ${
+              activeModule === 'manual' ? 'text-[#D60000]' : 'text-neutral-400'
+            }`}
+          />
+          {!isCollapsed && <span>Manual</span>}
         </button>
       </nav>
 

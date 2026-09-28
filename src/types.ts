@@ -60,7 +60,7 @@ export interface ServiceReport {
 
 export type UserRole = 'admin' | 'tecnico';
 
-export type ActiveModule = 'metricas' | 'reportes' | 'empleados' | 'perfil';
+export type ActiveModule = 'metricas' | 'reportes' | 'empleados' | 'perfil' | 'manual';
 
 export interface AdminProfile {
   nombre: string;

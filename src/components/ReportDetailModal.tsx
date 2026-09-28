@@ -1,6 +1,6 @@
 import React from 'react';
 import { ServiceReport } from '../types';
-import { X, FileText, FileSpreadsheet, Edit, Printer } from 'lucide-react';
+import { X, FileText, FileSpreadsheet, Edit, Printer, Trash2 } from 'lucide-react';
 import { generateServiceReportPDF } from '../utils/pdfExport';
 import { exportReportsToExcel } from '../utils/excelExport';
 
@@ -9,6 +9,7 @@ interface ReportDetailModalProps {
   isOpen: boolean;
   onClose: () => void;
   onEdit: (report: ServiceReport) => void;
+  onDelete?: (report: ServiceReport) => void;
 }
 
 export const ReportDetailModal: React.FC<ReportDetailModalProps> = ({
@@ -16,6 +17,7 @@ export const ReportDetailModal: React.FC<ReportDetailModalProps> = ({
   isOpen,
   onClose,
   onEdit,
+  onDelete,
 }) => {
   if (!isOpen || !report) return null;
 
@@ -63,16 +65,30 @@ export const ReportDetailModal: React.FC<ReportDetailModalProps> = ({
             </button>
 
             <button
+              type="button"
               onClick={() => onEdit(report)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-200 transition-colors border border-neutral-700"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-200 transition-colors border border-neutral-700 cursor-pointer"
             >
               <Edit className="w-3.5 h-3.5" />
               Editar
             </button>
 
+            {onDelete && (
+              <button
+                type="button"
+                onClick={() => onDelete(report)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded bg-red-600 hover:bg-red-700 text-white transition-colors cursor-pointer shadow-2xs"
+                title="Borrar de raíz este reporte"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                Borrar
+              </button>
+            )}
+
             <button
+              type="button"
               onClick={onClose}
-              className="text-neutral-400 hover:text-white p-1 rounded-md hover:bg-neutral-800 transition-colors"
+              className="text-neutral-400 hover:text-white p-1 rounded-md hover:bg-neutral-800 transition-colors cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>

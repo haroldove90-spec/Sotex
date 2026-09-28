@@ -1,6 +1,6 @@
 import React from 'react';
 import { ActiveModule, UserRole } from '../types';
-import { BarChart3, FileText, User, Users } from 'lucide-react';
+import { BarChart3, FileText, User, Users, BookOpen } from 'lucide-react';
 
 interface BottomNavProps {
   currentRole: UserRole;
@@ -24,8 +24,8 @@ export const BottomNav: React.FC<BottomNavProps> = ({
     >
       <div
         className={`grid ${
-          isAdmin ? 'grid-cols-4' : 'grid-cols-3'
-        } h-14 max-w-md mx-auto items-center px-2`}
+          isAdmin ? 'grid-cols-5' : 'grid-cols-4'
+        } h-14 max-w-md mx-auto items-center px-1.5`}
       >
         {/* 1. Module: Métricas */}
         <button
@@ -111,7 +111,32 @@ export const BottomNav: React.FC<BottomNavProps> = ({
           </button>
         )}
 
-        {/* 4. Module: Perfil */}
+        {/* 4. Module: Manual de Usuario */}
+        <button
+          id="btn-nav-manual-mobile"
+          onClick={() => onSelectModule('manual')}
+          className={`flex flex-col items-center justify-center h-full relative transition-colors cursor-pointer ${
+            activeModule === 'manual' ? 'text-white' : 'text-neutral-400 hover:text-neutral-200'
+          }`}
+        >
+          <BookOpen
+            className={`w-5 h-5 ${
+              activeModule === 'manual' ? 'text-[#D60000]' : 'text-neutral-400'
+            }`}
+          />
+          <span
+            className={`text-[10px] sm:text-[11px] font-semibold mt-0.5 ${
+              activeModule === 'manual' ? 'text-white font-bold' : 'text-neutral-400'
+            }`}
+          >
+            Manual
+          </span>
+          {activeModule === 'manual' && (
+            <div className="absolute top-0 w-8 h-0.5 bg-[#D60000] rounded-full" />
+          )}
+        </button>
+
+        {/* 5. Module: Perfil */}
         <button
           id="btn-nav-perfil-mobile"
           onClick={() => onSelectModule('perfil')}

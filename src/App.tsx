@@ -17,8 +17,10 @@ import { ReportsTable } from './components/ReportsTable';
 import { MetricsView } from './components/MetricsView';
 import { EmployeesView } from './components/EmployeesView';
 import { AdminProfileView } from './components/AdminProfileView';
+import { UserManualView } from './components/UserManualView';
 import { ReportFormModal } from './components/ReportFormModal';
 import { ReportDetailModal } from './components/ReportDetailModal';
+import { DeleteConfirmModal, DeleteTarget } from './components/DeleteConfirmModal';
 import { exportReportsToExcel } from './utils/excelExport';
 import { generateAllReportsPDF, generateServiceReportPDF } from './utils/pdfExport';
 import { supabase, SUPABASE_SETUP_SQL } from './utils/supabaseClient';
@@ -33,6 +35,7 @@ import {
   Database,
   X,
   Copy,
+  Trash2,
 } from 'lucide-react';
 
 const STORAGE_KEY = 'sotex_service_reports_v2';
@@ -41,6 +44,50 @@ const TECH_PROFILE_KEY = 'sotex_tech_profile_v2';
 const EMPLOYEES_STORAGE_KEY = 'sotex_employees_v2';
 const ROLE_STORAGE_KEY = 'sotex_active_role_v2';
 const USER_STORAGE_KEY = 'sotex_active_user_v2';
+const DELETED_REPORTS_KEY = 'sotex_permanently_deleted_reports_v3';
+const DELETED_EMPLOYEES_KEY = 'sotex_permanently_deleted_employees_v3';
+
+export const getPermanentlyDeletedReportKeys = (): Set<string> => {
+  try {
+    const raw = localStorage.getItem(DELETED_REPORTS_KEY);
+    return new Set(raw ? JSON.parse(raw) : []);
+  } catch {
+    return new Set();
+  }
+};
+
+export const addPermanentlyDeletedReportKeys = (...keys: (string | undefined)[]) => {
+  try {
+    const current = getPermanentlyDeletedReportKeys();
+    keys.forEach((k) => {
+      if (k && k.trim()) current.add(k.trim().toLowerCase());
+    });
+    localStorage.setItem(DELETED_REPORTS_KEY, JSON.stringify(Array.from(current)));
+  } catch (err) {
+    console.error('Error saving deleted report keys:', err);
+  }
+};
+
+export const getPermanentlyDeletedEmployeeKeys = (): Set<string> => {
+  try {
+    const raw = localStorage.getItem(DELETED_EMPLOYEES_KEY);
+    return new Set(raw ? JSON.parse(raw) : []);
+  } catch {
+    return new Set();
+  }
+};
+
+export const addPermanentlyDeletedEmployeeKeys = (...keys: (string | undefined)[]) => {
+  try {
+    const current = getPermanentlyDeletedEmployeeKeys();
+    keys.forEach((k) => {
+      if (k && k.trim()) current.add(k.trim().toLowerCase());
+    });
+    localStorage.setItem(DELETED_EMPLOYEES_KEY, JSON.stringify(Array.from(current)));
+  } catch (err) {
+    console.error('Error saving deleted employee keys:', err);
+  }
+};
 
 const DEFAULT_ADMIN_PROFILE: AdminProfile = {
   nombre: 'Harold Anguiano Morales',
@@ -135,18 +182,24 @@ export default function App() {
 
   // Reports state (shared and synchronized)
   const [reports, setReports] = useState<ServiceReport[]>(() => {
+    const deletedKeys = getPermanentlyDeletedReportKeys();
+    const isNotDeleted = (r: any) =>
+      r &&
+      !deletedKeys.has(String(r.id || '').toLowerCase()) &&
+      !deletedKeys.has(String(r.folio || '').toLowerCase());
+
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed.map(normalizeReport);
+          return parsed.filter(isNotDeleted).map(normalizeReport);
         }
       }
     } catch {
       // Fallback
     }
-    return INITIAL_REPORTS.map(normalizeReport);
+    return INITIAL_REPORTS.filter(isNotDeleted).map(normalizeReport);
   });
 
   // Active module navigation: 'metricas' | 'reportes' | 'empleados' | 'perfil'
@@ -183,16 +236,23 @@ export default function App() {
 
   // Employees state (Managed by Admin & synced with Supabase)
   const [employees, setEmployees] = useState<Employee[]>(() => {
+    const deletedKeys = getPermanentlyDeletedEmployeeKeys();
+    const isNotDeleted = (e: any) =>
+      e &&
+      !deletedKeys.has(String(e.id || '').toLowerCase()) &&
+      (!e.usuario || !deletedKeys.has(String(e.usuario).toLowerCase())) &&
+      (!e.correo || !deletedKeys.has(String(e.correo).toLowerCase()));
+
     try {
       const saved = localStorage.getItem(EMPLOYEES_STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
+          return parsed.filter(isNotDeleted);
         }
       }
     } catch {}
-    return INITIAL_EMPLOYEES;
+    return INITIAL_EMPLOYEES.filter(isNotDeleted);
   });
 
   // Modals state
@@ -202,36 +262,57 @@ export default function App() {
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [viewingReport, setViewingReport] = useState<ServiceReport | null>(null);
 
+  // Delete Confirm Modal State
+  const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+
   // Toast notification
   const [toast, setToast] = useState<{ message: string; type?: 'success' | 'info' | 'error' } | null>(null);
 
   // Fetch / Sync with Supabase on mount
   useEffect(() => {
     const fetchSupabaseData = async () => {
+      const deletedEmpKeys = getPermanentlyDeletedEmployeeKeys();
+      const deletedRepKeys = getPermanentlyDeletedReportKeys();
+
+      // 1. Sync Employees from Supabase
       try {
         const { data, error } = await supabase.from('employees').select('*');
         if (!error && data && data.length > 0) {
-          const remoteEmployees: Employee[] = data.map((d: any) => ({
-            id: d.id,
-            nombre: d.nombre,
-            usuario: d.usuario,
-            correo: d.correo,
-            password: d.password,
-            rol: d.rol === 'admin' ? 'admin' : 'tecnico',
-            telefono: d.telefono || '',
-            puesto: d.puesto || '',
-            sucursal: d.sucursal || 'Guadalajara (Matriz)',
-            cedulaTecnica: d.cedula_tecnica || '',
-            activo: d.activo ?? true,
-            fotoUrl: d.foto_url,
-            firmaDigital: d.firma_digital,
-            fechaRegistro: d.created_at || new Date().toISOString().split('T')[0],
-          }));
+          const remoteEmployees: Employee[] = data
+            .map((d: any) => ({
+              id: d.id,
+              nombre: d.nombre,
+              usuario: d.usuario,
+              correo: d.correo,
+              password: d.password,
+              rol: (d.rol === 'admin' ? 'admin' : 'tecnico') as UserRole,
+              telefono: d.telefono || '',
+              puesto: d.puesto || '',
+              sucursal: d.sucursal || 'Guadalajara (Matriz)',
+              cedulaTecnica: d.cedula_tecnica || '',
+              activo: d.activo ?? true,
+              fotoUrl: d.foto_url,
+              firmaDigital: d.firma_digital,
+              fechaRegistro: d.created_at || new Date().toISOString().split('T')[0],
+            }))
+            .filter(
+              (e) =>
+                !deletedEmpKeys.has(e.id.toLowerCase()) &&
+                (!e.usuario || !deletedEmpKeys.has(e.usuario.toLowerCase())) &&
+                (!e.correo || !deletedEmpKeys.has(e.correo.toLowerCase()))
+            );
 
           setEmployees((localList) => {
             const merged = [...remoteEmployees];
             for (const local of localList) {
+              const isDeleted =
+                deletedEmpKeys.has(local.id.toLowerCase()) ||
+                (local.usuario && deletedEmpKeys.has(local.usuario.toLowerCase())) ||
+                (local.correo && deletedEmpKeys.has(local.correo.toLowerCase()));
+
               if (
+                !isDeleted &&
                 !merged.some(
                   (m) =>
                     m.id === local.id ||
@@ -246,7 +327,64 @@ export default function App() {
           });
         }
       } catch (err) {
-        console.log('Info de conexión a Supabase:', err);
+        console.log('Info de sincronización empleados Supabase:', err);
+      }
+
+      // 2. Sync Reports from Supabase
+      try {
+        const { data: repData, error: repError } = await supabase.from('service_reports').select('*');
+        if (!repError && repData && repData.length > 0) {
+          const remoteReports: ServiceReport[] = repData
+            .map((d: any) =>
+              normalizeReport({
+                id: d.id,
+                reportCode: d.report_code || 'SOT-REP-CLG-01',
+                folio: d.folio,
+                empresa: d.empresa,
+                fecha: d.fecha,
+                direccion: d.direccion || '',
+                telefono: d.telefono || '',
+                numVisita: d.num_visita || 1,
+                equipo: d.equipo || {},
+                danos: d.danos || {},
+                descripcionDanos: d.descripcion_danos || '',
+                pruebaCabezalResultado: d.prueba_cabezal_resultado || '',
+                pruebaCabezalImagen: d.prueba_cabezal_imagen,
+                clienteNombre: d.cliente_nombre || '',
+                clienteEmail: d.cliente_email || '',
+                clienteFirma: d.cliente_firma,
+                tecnicoNombre: d.tecnico_nombre || '',
+                tecnicoFirma: d.tecnico_firma,
+                status: d.status || 'Completado',
+                observacionesGenerales: d.observaciones_generales || '',
+                createdAt: d.created_at,
+              })
+            )
+            .filter(
+              (r) =>
+                !deletedRepKeys.has(r.id.toLowerCase()) &&
+                !deletedRepKeys.has(r.folio.toLowerCase())
+            );
+
+          setReports((localList) => {
+            const merged = [...remoteReports];
+            for (const local of localList) {
+              const isDeleted =
+                deletedRepKeys.has(local.id.toLowerCase()) ||
+                deletedRepKeys.has(local.folio.toLowerCase());
+
+              if (
+                !isDeleted &&
+                !merged.some((m) => m.id === local.id || m.folio === local.folio)
+              ) {
+                merged.push(local);
+              }
+            }
+            return merged.map(normalizeReport);
+          });
+        }
+      } catch (repErr) {
+        console.log('Info de sincronización reportes Supabase:', repErr);
       }
     };
 
@@ -372,10 +510,9 @@ export default function App() {
     showToast(`Empleado "${updatedEmp.nombre}" actualizado correctamente.`, 'success');
   };
 
-  const handleDeleteEmployee = (id: string) => {
-    const target = employees.find((e) => e.id === id);
-    setEmployees((prev) => prev.filter((e) => e.id !== id));
-    showToast(`Empleado "${target?.nombre || 'seleccionado'}" eliminado.`, 'info');
+  const handleRequestDeleteEmployee = (employee: Employee) => {
+    setDeleteTarget({ type: 'employee', employee });
+    setIsDeleteModalOpen(true);
   };
 
   // Reports Handlers
@@ -395,19 +532,119 @@ export default function App() {
     setIsDetailOpen(true);
   };
 
-  const handleDeleteReport = (id: string) => {
-    const target = reports.find((r) => r.id === id);
-    if (!target) return;
-
-    if (window.confirm(`¿Está seguro de eliminar el reporte de servicio con Folio "${target.folio}" de la empresa "${target.empresa}"?`)) {
-      setReports((prev) => prev.filter((r) => r.id !== id));
-      showToast(`Reporte ${target.folio} eliminado correctamente.`, 'info');
-    }
+  const handleRequestDeleteReport = (report: ServiceReport) => {
+    setDeleteTarget({ type: 'report', report });
+    setIsDeleteModalOpen(true);
   };
 
-  const handleSaveReport = (report: ServiceReport, andDownloadPDF = false) => {
+  const handleRequestBulkDeleteReports = (reportsToDelete: ServiceReport[]) => {
+    if (!reportsToDelete || reportsToDelete.length === 0) return;
+    setDeleteTarget({ type: 'bulk_reports', reports: reportsToDelete });
+    setIsDeleteModalOpen(true);
+  };
+
+  // Execute Permanent Deletion (Local Storage + Supabase "De Raíz")
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget) return;
+
+    if (deleteTarget.type === 'report') {
+      const { report } = deleteTarget;
+      // 1. Add to permanent blacklist
+      addPermanentlyDeletedReportKeys(report.id, report.folio);
+
+      // 2. Remove immediately from local state
+      setReports((prev) =>
+        prev.filter((r) => r.id !== report.id && r.folio !== report.folio)
+      );
+
+      // 3. Delete from Supabase table service_reports permanently
+      try {
+        const { error: err1 } = await supabase
+          .from('service_reports')
+          .delete()
+          .eq('id', report.id);
+        if (report.folio) {
+          await supabase.from('service_reports').delete().eq('folio', report.folio);
+        }
+        if (err1) {
+          console.warn('Nota de Supabase al borrar reporte:', err1.message);
+        }
+      } catch (err) {
+        console.error('Error al borrar reporte en Supabase:', err);
+      }
+
+      if (isDetailOpen && viewingReport?.id === report.id) {
+        setIsDetailOpen(false);
+        setViewingReport(null);
+      }
+
+      showToast(`Reporte ${report.folio} borrado de raíz de Supabase y del sistema.`, 'success');
+    } else if (deleteTarget.type === 'bulk_reports') {
+      const { reports: toDelete } = deleteTarget;
+      const ids = toDelete.map((r) => r.id);
+      const folios = toDelete.map((r) => r.folio);
+
+      // 1. Add to permanent blacklist
+      toDelete.forEach((r) => addPermanentlyDeletedReportKeys(r.id, r.folio));
+
+      // 2. Remove immediately from local state
+      setReports((prev) =>
+        prev.filter((r) => !ids.includes(r.id) && !folios.includes(r.folio))
+      );
+
+      // 3. Delete from Supabase permanently
+      try {
+        await supabase.from('service_reports').delete().in('id', ids);
+        await supabase.from('service_reports').delete().in('folio', folios);
+      } catch (err) {
+        console.error('Error al borrar reportes en lote en Supabase:', err);
+      }
+
+      showToast(`${toDelete.length} reportes borrados de raíz exitosamente.`, 'success');
+    } else if (deleteTarget.type === 'employee') {
+      const { employee } = deleteTarget;
+
+      // 1. Add to permanent blacklist
+      addPermanentlyDeletedEmployeeKeys(
+        employee.id,
+        employee.usuario,
+        employee.correo
+      );
+
+      // 2. Remove immediately from local state
+      setEmployees((prev) =>
+        prev.filter(
+          (e) =>
+            e.id !== employee.id &&
+            (!employee.usuario || e.usuario !== employee.usuario) &&
+            (!employee.correo ||
+              e.correo.toLowerCase() !== employee.correo.toLowerCase())
+        )
+      );
+
+      // 3. Delete from Supabase table employees permanently
+      try {
+        await supabase.from('employees').delete().eq('id', employee.id);
+        if (employee.usuario) {
+          await supabase.from('employees').delete().eq('usuario', employee.usuario);
+        }
+        if (employee.correo) {
+          await supabase.from('employees').delete().eq('correo', employee.correo);
+        }
+      } catch (err) {
+        console.error('Error al borrar empleado en Supabase:', err);
+      }
+
+      showToast(`Empleado "${employee.nombre}" borrado de raíz de Supabase y del sistema.`, 'success');
+    }
+
+    setIsDeleteModalOpen(false);
+    setDeleteTarget(null);
+  };
+
+  const handleSaveReport = async (report: ServiceReport, andDownloadPDF = false) => {
     setReports((prev) => {
-      const existsIndex = prev.findIndex((r) => r.id === report.id);
+      const existsIndex = prev.findIndex((r) => r.id === report.id || r.folio === report.folio);
       if (existsIndex >= 0) {
         const updated = [...prev];
         updated[existsIndex] = report;
@@ -419,6 +656,34 @@ export default function App() {
 
     setIsFormOpen(false);
     setEditingReport(null);
+
+    // Sync to Supabase table service_reports
+    try {
+      await supabase.from('service_reports').upsert({
+        id: report.id,
+        report_code: report.reportCode || 'SOT-REP-CLG-01',
+        folio: report.folio,
+        empresa: report.empresa,
+        fecha: report.fecha,
+        direccion: report.direccion || '',
+        telefono: report.telefono || '',
+        num_visita: report.numVisita || 1,
+        equipo: report.equipo || {},
+        danos: report.danos || {},
+        descripcion_danos: report.descripcionDanos || '',
+        prueba_cabezal_resultado: report.pruebaCabezalResultado || '',
+        prueba_cabezal_imagen: report.pruebaCabezalImagen || null,
+        cliente_nombre: report.clienteNombre || '',
+        cliente_email: report.clienteEmail || '',
+        cliente_firma: report.clienteFirma || null,
+        tecnico_nombre: report.tecnicoNombre || '',
+        tecnico_firma: report.tecnicoFirma || null,
+        status: report.status || 'Completado',
+        observaciones_generales: report.observacionesGenerales || '',
+      });
+    } catch (err) {
+      console.log('Nota: Guardado local exitoso. En espera de script en Supabase:', err);
+    }
 
     if (andDownloadPDF) {
       generateServiceReportPDF(report, true);
@@ -447,10 +712,14 @@ export default function App() {
   };
 
   const handleResetData = () => {
-    if (window.confirm('¿Desea restaurar los datos de ejemplo iniciales del formato SOT-REP-CLG-01?')) {
-      setReports(INITIAL_REPORTS.map(normalizeReport));
-      showToast('Datos de muestra restaurados.', 'info');
-    }
+    const deletedKeys = getPermanentlyDeletedReportKeys();
+    const activeDemo = INITIAL_REPORTS.filter(
+      (r) =>
+        !deletedKeys.has(r.id.toLowerCase()) &&
+        !deletedKeys.has(r.folio.toLowerCase())
+    );
+    setReports(activeDemo.map(normalizeReport));
+    showToast('Datos demo restaurados (respetando registros borrados de raíz).', 'info');
   };
 
   // If no role is selected, render the Minimalist Home with Logo & 2-column role access
@@ -660,7 +929,8 @@ export default function App() {
                   reports={reports}
                   onView={handleViewReport}
                   onEdit={handleEditReport}
-                  onDelete={handleDeleteReport}
+                  onDelete={handleRequestDeleteReport}
+                  onBulkDelete={handleRequestBulkDeleteReports}
                   onNewReport={handleOpenNewReport}
                 />
               </div>
@@ -673,7 +943,7 @@ export default function App() {
               employees={employees}
               onAddEmployee={handleAddEmployee}
               onUpdateEmployee={handleUpdateEmployee}
-              onDeleteEmployee={handleDeleteEmployee}
+              onDeleteEmployee={handleRequestDeleteEmployee}
             />
           )}
 
@@ -683,6 +953,14 @@ export default function App() {
               profile={currentProfile}
               onSaveProfile={currentRole === 'tecnico' ? handleSaveTechProfile : handleSaveAdminProfile}
               reports={reports}
+            />
+          )}
+
+          {/* Module 5: Manual del Usuario (Admin y Técnico) */}
+          {activeModule === 'manual' && (
+            <UserManualView
+              currentRole={currentRole}
+              onOpenSqlModal={() => setShowSqlModal(true)}
             />
           )}
         </main>
@@ -759,6 +1037,18 @@ export default function App() {
           setViewingReport(null);
         }}
         onEdit={(rep) => handleEditReport(rep)}
+        onDelete={(rep) => handleRequestDeleteReport(rep)}
+      />
+
+      {/* Delete Confirm Modal (Borrar de Raíz) */}
+      <DeleteConfirmModal
+        isOpen={isDeleteModalOpen}
+        target={deleteTarget}
+        onClose={() => {
+          setIsDeleteModalOpen(false);
+          setDeleteTarget(null);
+        }}
+        onConfirm={handleConfirmDelete}
       />
 
       {/* Modal: View SQL for Supabase */}

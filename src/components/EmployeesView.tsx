@@ -28,7 +28,7 @@ interface EmployeesViewProps {
   employees: Employee[];
   onAddEmployee: (employee: Employee) => void;
   onUpdateEmployee: (employee: Employee) => void;
-  onDeleteEmployee: (id: string) => void;
+  onDeleteEmployee: (employee: Employee) => void;
 }
 
 export const EmployeesView: React.FC<EmployeesViewProps> = ({
@@ -355,12 +355,8 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
                 {/* Delete */}
                 <button
                   type="button"
-                  onClick={() => {
-                    if (window.confirm(`¿Deseas eliminar a ${emp.nombre}?`)) {
-                      onDeleteEmployee(emp.id);
-                    }
-                  }}
-                  title="Eliminar empleado"
+                  onClick={() => onDeleteEmployee(emp)}
+                  title="Borrar de raíz este empleado de Supabase y del sistema"
                   className="p-1.5 text-slate-400 hover:text-red-600 bg-slate-100 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
                 >
                   <Trash2 className="w-4 h-4" />
