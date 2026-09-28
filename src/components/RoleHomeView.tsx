@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { UserRole } from '../types';
 import { ShieldCheck, Wrench, LogIn, Database } from 'lucide-react';
+import { PWAInstallButton } from './PWAInstallButton';
 
 interface RoleHomeViewProps {
   onOpenLogin: (roleHint?: UserRole) => void;
@@ -75,6 +76,9 @@ export const RoleHomeView: React.FC<RoleHomeViewProps> = ({
             <LogIn className="w-4 h-4 text-[#D60000]" />
             <span>Iniciar Sesión</span>
           </button>
+
+          {/* Mobile Install Button (Visible ONLY on mobile devices, hidden on desktop) */}
+          <PWAInstallButton variant="banner" className="w-full mt-1" />
 
           <button
             type="button"

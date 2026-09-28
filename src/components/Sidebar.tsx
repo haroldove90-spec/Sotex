@@ -1,6 +1,5 @@
 import React from 'react';
 import { ActiveModule, AdminProfile, UserRole } from '../types';
-import { PWAInstallButton } from './PWAInstallButton';
 import {
   FileText,
   BarChart3,
@@ -197,27 +196,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {!isCollapsed && <span>Manual</span>}
         </button>
       </nav>
-
-      {/* PWA Install Area */}
-      <div className="p-3 border-t border-neutral-800">
-        {!isCollapsed ? (
-          <div className="bg-neutral-900/90 rounded-xl p-3 border border-neutral-800/80">
-            <div className="flex items-center gap-2 mb-2">
-              <img
-                src="https://daloocomercializadora.com.mx/sotexicono.png"
-                alt="Sotex"
-                className="w-5 h-5 object-contain"
-              />
-              <span className="text-[11px] font-bold text-neutral-200">Sotex PWA</span>
-            </div>
-            <PWAInstallButton className="w-full justify-center text-xs py-2" />
-          </div>
-        ) : (
-          <div className="flex justify-center">
-            <PWAInstallButton className="px-2 py-2" />
-          </div>
-        )}
-      </div>
 
       {/* User Footer Profile Pill & Logout Button */}
       <div className="p-3 border-t border-neutral-800 bg-neutral-900/50 space-y-2">
