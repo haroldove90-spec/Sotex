@@ -1,6 +1,13 @@
 export type VisitNumber = 1 | 2 | 3 | 4;
 
-export type ServiceStatus = 'En Revisión' | 'Completado' | 'Pendiente Refacción' | 'Garantía';
+export type ServiceStatus = 'En Revisión' | 'Pendiente Refacción' | 'Garantía' | 'Completado';
+
+export const SERVICE_STATUS_ORDER: ServiceStatus[] = [
+  'En Revisión',
+  'Pendiente Refacción',
+  'Garantía',
+  'Completado',
+];
 
 export type ServiceLocation = 'campo' | 'sotex';
 

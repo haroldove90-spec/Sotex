@@ -639,7 +639,7 @@ export const UserManualView: React.FC<UserManualViewProps> = ({
                 <ol className="list-decimal list-inside space-y-1.5 text-slate-600 bg-slate-50 p-3.5 rounded-xl border border-slate-200">
                   <li>Registra el Nombre completo y Correo electrónico del encargado de planta.</li>
                   <li>Solicítale que firme en el recuadro digital directamente en tu pantalla o tablet.</li>
-                  <li>Establece el estado del servicio: <em>"Completado"</em>, <em>"Pendiente Refacción"</em>, <em>"En Revisión"</em> o <em>"Garantía"</em>.</li>
+                  <li>Establece el estado del servicio según el flujo oficial: <em>1. "En Revisión"</em>, <em>2. "Pendiente Refacción"</em>, <em>3. "Garantía"</em> o <em>4. "Completado"</em>.</li>
                   <li>
                     Haz clic en <strong>"Guardar y Descargar PDF"</strong>. Se generará de inmediato el formato físico oficial SOT-REP-CLG-01 en formato PDF.
                   </li>

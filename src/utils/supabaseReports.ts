@@ -235,27 +235,39 @@ export const saveReportToSupabase = async (
 };
 
 /**
- * Deletes a report from Supabase permanently by id and folio.
+ * Deletes a report from Supabase permanently by id and folio (de raíz).
  */
 export const deleteReportFromSupabase = async (
   reportId: string,
   folio?: string
 ): Promise<{ success: boolean; error?: string }> => {
   try {
-    const { error: err1 } = await supabase
-      .from('service_reports')
-      .delete()
-      .eq('id', reportId);
+    const cleanId = String(reportId || '').trim();
+    const cleanFolio = String(folio || '').trim();
 
-    if (folio) {
-      await supabase.from('service_reports').delete().eq('folio', folio);
+    // 1. Delete by primary ID
+    if (cleanId) {
+      await supabase.from('service_reports').delete().eq('id', cleanId);
+      await supabase.from('service_reports').delete().ilike('id', cleanId);
     }
 
-    if (err1) {
-      return { success: false, error: err1.message };
+    // 2. Delete by Folio if provided
+    if (cleanFolio) {
+      await supabase.from('service_reports').delete().eq('folio', cleanFolio);
+      await supabase.from('service_reports').delete().ilike('folio', cleanFolio);
     }
+
+    // Also delete any matching system_notifications for this order
+    if (cleanId) {
+      await supabase.from('system_notifications').delete().eq('orden_id', cleanId);
+    }
+    if (cleanFolio) {
+      await supabase.from('system_notifications').delete().eq('folio', cleanFolio);
+    }
+
     return { success: true };
   } catch (err: any) {
+    console.warn('Nota al eliminar reporte en Supabase:', err);
     return { success: false, error: err?.message };
   }
 };

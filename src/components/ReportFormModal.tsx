@@ -433,10 +433,10 @@ export const ReportFormModal: React.FC<ReportFormModalProps> = ({
                 onChange={(e) => setStatus(e.target.value as ServiceStatus)}
                 className="w-full text-xs font-bold bg-white border border-slate-300 rounded px-2.5 py-1.5 focus:ring-1 focus:ring-[#D60000] focus:border-[#D60000] focus:outline-hidden text-slate-800 cursor-pointer"
               >
-                <option value="En Revisión">1. En Revisión (Inicial)</option>
-                <option value="Completado">2. Completado</option>
-                <option value="Pendiente Refacción">3. Pendiente Refacción</option>
-                <option value="Garantía">4. Garantía</option>
+                <option value="En Revisión">1. En Revisión</option>
+                <option value="Pendiente Refacción">2. Pendiente Refacción</option>
+                <option value="Garantía">3. Garantía</option>
+                <option value="Completado">4. Completado</option>
               </select>
             </div>
 

@@ -182,10 +182,10 @@ export const ReportsTable: React.FC<ReportsTableProps> = ({
                 className="text-xs bg-transparent font-medium text-slate-800 focus:outline-hidden cursor-pointer"
               >
                 <option value="ALL">Todos los Estados</option>
-                <option value="En Revisión">1. En Revisión (Prioritario)</option>
-                <option value="Completado">2. Completado</option>
-                <option value="Pendiente Refacción">3. Pendiente Refacción</option>
-                <option value="Garantía">4. Garantía</option>
+                <option value="En Revisión">1. En Revisión</option>
+                <option value="Pendiente Refacción">2. Pendiente Refacción</option>
+                <option value="Garantía">3. Garantía</option>
+                <option value="Completado">4. Completado</option>
               </select>
             </div>
 

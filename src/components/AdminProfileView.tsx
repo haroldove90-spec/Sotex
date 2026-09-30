@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { AdminProfile, ServiceReport } from '../types';
 import {
   User,
@@ -12,8 +12,12 @@ import {
   ShieldCheck,
   Award,
   PenTool,
+  X,
+  RotateCcw,
+  Check,
 } from 'lucide-react';
 import { compressImageFile } from '../utils/imageCompressor';
+import { SignaturePad, SignaturePadRef } from './SignaturePad';
 
 interface AdminProfileViewProps {
   profile: AdminProfile;
@@ -28,15 +32,24 @@ export const AdminProfileView: React.FC<AdminProfileViewProps> = ({
 }) => {
   const [formData, setFormData] = useState<AdminProfile>(profile);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [isSignModalOpen, setIsSignModalOpen] = useState(false);
+  const [tempSignature, setTempSignature] = useState<string | undefined>(profile.firmaDigital);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const signatureInputRef = useRef<HTMLInputElement>(null);
+  const signaturePadRef = useRef<SignaturePadRef>(null);
+
+  // Keep formData in sync if profile updates from remote Supabase sync
+  useEffect(() => {
+    setFormData(profile);
+    setTempSignature(profile.firmaDigital);
+  }, [profile]);
 
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     try {
-      const compressed = await compressImageFile(file, 400, 400, 0.8);
+      // Compress avatar to clean ~240x240 JPEG (~18KB) so it saves instantly in storage and Supabase
+      const compressed = await compressImageFile(file, 240, 240, 0.82);
       setFormData((prev) => ({ ...prev, fotoUrl: compressed }));
     } catch (err) {
       console.warn('Error al procesar foto de perfil:', err);
@@ -45,18 +58,24 @@ export const AdminProfileView: React.FC<AdminProfileViewProps> = ({
     }
   };
 
-  const handleSignatureUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const handleOpenSignModal = () => {
+    setTempSignature(formData.firmaDigital);
+    setIsSignModalOpen(true);
+  };
 
-    try {
-      const compressed = await compressImageFile(file, 600, 250, 0.8);
-      setFormData((prev) => ({ ...prev, firmaDigital: compressed }));
-    } catch (err) {
-      console.warn('Error al procesar firma:', err);
-    } finally {
-      if (e.target) e.target.value = '';
+  const handleSaveSignatureFromModal = () => {
+    const sig = signaturePadRef.current?.getSignature();
+    if (sig) {
+      setFormData((prev) => ({ ...prev, firmaDigital: sig }));
+    } else if (tempSignature) {
+      setFormData((prev) => ({ ...prev, firmaDigital: tempSignature }));
     }
+    setIsSignModalOpen(false);
+  };
+
+  const handleRemoveSignature = () => {
+    setFormData((prev) => ({ ...prev, firmaDigital: undefined }));
+    setTempSignature(undefined);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -68,8 +87,8 @@ export const AdminProfileView: React.FC<AdminProfileViewProps> = ({
 
   const myReports = reports.filter(
     (r) =>
-      r.tecnicoNombre.toLowerCase().includes(formData.nombre.toLowerCase()) ||
-      formData.nombre.toLowerCase().includes(r.tecnicoNombre.toLowerCase())
+      (r.tecnicoNombre && formData.nombre && r.tecnicoNombre.toLowerCase().includes(formData.nombre.toLowerCase())) ||
+      (formData.nombre && r.tecnicoNombre && formData.nombre.toLowerCase().includes(r.tecnicoNombre.toLowerCase()))
   );
   const totalReportsCount = myReports.length > 0 ? myReports.length : reports.length;
 
@@ -80,11 +99,14 @@ export const AdminProfileView: React.FC<AdminProfileViewProps> = ({
         <div>
           <h2 className="text-lg font-bold text-slate-900 tracking-tight flex items-center gap-2">
             <User className="w-5 h-5 text-[#D60000]" />
-            <span>Perfil</span>
+            <span>Perfil de Usuario</span>
             <span className="bg-red-100 text-red-700 text-[11px] font-mono font-bold px-2 py-0.5 rounded">
               SOT-PER-01
             </span>
           </h2>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Gestiona tu información de usuario, fotografía y firma digital oficial para reportes técnicos.
+          </p>
         </div>
       </div>
 
@@ -108,17 +130,17 @@ export const AdminProfileView: React.FC<AdminProfileViewProps> = ({
             type="button"
             onClick={() => fileInputRef.current?.click()}
             className="absolute inset-0 bg-black/60 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white cursor-pointer"
-            title="Cambiar foto"
+            title="Cambiar foto de perfil"
           >
             <Camera className="w-5 h-5 mb-1 text-red-400" />
-            <span className="text-[10px] font-semibold">Foto</span>
+            <span className="text-[10px] font-semibold">Cambiar Foto</span>
           </button>
 
           {formData.fotoUrl && (
             <button
               type="button"
               onClick={() => setFormData((prev) => ({ ...prev, fotoUrl: undefined }))}
-              className="absolute -bottom-1.5 -right-1.5 bg-white border border-slate-300 text-slate-500 hover:text-red-600 p-1 rounded-full shadow-xs"
+              className="absolute -bottom-1.5 -right-1.5 bg-white border border-slate-300 text-slate-500 hover:text-red-600 p-1 rounded-full shadow-xs cursor-pointer"
               title="Eliminar foto"
             >
               <Trash2 className="w-3 h-3" />
@@ -136,11 +158,17 @@ export const AdminProfileView: React.FC<AdminProfileViewProps> = ({
 
         {/* Info */}
         <div className="text-center sm:text-left flex-1 min-w-0">
-          <h3 className="text-xl font-bold text-slate-900 tracking-tight truncate">
-            {formData.nombre || 'Usuario SOTEX'}
-          </h3>
+          <div className="flex items-center justify-center sm:justify-start gap-2">
+            <h3 className="text-xl font-bold text-slate-900 tracking-tight truncate">
+              {formData.nombre || 'Usuario SOTEX'}
+            </h3>
+            <span className="inline-flex items-center gap-1 bg-red-50 text-red-700 text-[10px] font-bold px-2 py-0.5 rounded-full border border-red-200">
+              <ShieldCheck className="w-3 h-3" />
+              Verificado
+            </span>
+          </div>
           <p className="text-xs text-slate-500 mt-0.5">
-            {formData.cargo || 'Técnico'} • {formData.sucursal || 'Matriz'}
+            {formData.cargo || 'Técnico Especialista'} • {formData.sucursal || 'Guadalajara (Matriz)'}
           </p>
 
           <div className="mt-3 flex flex-wrap items-center justify-center sm:justify-start gap-2 text-xs text-slate-600">
@@ -154,9 +182,9 @@ export const AdminProfileView: React.FC<AdminProfileViewProps> = ({
                 {formData.telefono}
               </span>
             )}
-            <span className="inline-flex items-center gap-1 bg-slate-50 px-2.5 py-1 rounded-md border border-slate-200">
+            <span className="inline-flex items-center gap-1 bg-slate-50 px-2.5 py-1 rounded-md border border-slate-200 font-mono">
               <Award className="w-3.5 h-3.5 text-amber-600" />
-              ID: {formData.cedulaTecnica}
+              Cédula: {formData.cedulaTecnica || 'SOT-01'}
             </span>
           </div>
         </div>
@@ -171,11 +199,11 @@ export const AdminProfileView: React.FC<AdminProfileViewProps> = ({
       {/* Main Form */}
       <form onSubmit={handleSubmit} className="bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden">
         <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-          <h3 className="text-sm font-bold text-slate-900">Datos de Cuenta y Firma</h3>
+          <h3 className="text-sm font-bold text-slate-900">Datos de Cuenta y Firma Oficial</h3>
           {saveSuccess && (
-            <div className="flex items-center gap-1 text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-md text-xs font-semibold">
+            <div className="flex items-center gap-1 text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-md text-xs font-semibold animate-fade-in">
               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-              Guardado
+              Guardado en Sistema y Supabase
             </div>
           )}
         </div>
@@ -260,14 +288,20 @@ export const AdminProfileView: React.FC<AdminProfileViewProps> = ({
 
           <div className="h-px bg-slate-100" />
 
-          {/* Firma Digital */}
+          {/* Firma Digital - Archivo desactivado, ventana de firma activada */}
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-2">
-              Firma Digital (para autorizar reportes)
-            </label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-xs font-bold text-slate-700">
+                Firma Digital (para autorizar y cerrar reportes de servicio)
+              </label>
+              <span className="text-[10px] text-slate-500 font-medium">
+                Captura táctil / mouse autorizada
+              </span>
+            </div>
 
-            <div className="flex flex-col sm:flex-row items-center gap-4">
-              <div className="w-56 h-20 border-2 border-dashed border-slate-300 rounded-lg bg-slate-50 flex items-center justify-center overflow-hidden p-2">
+            <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl flex flex-col sm:flex-row items-center gap-4">
+              {/* Preview box */}
+              <div className="w-64 h-24 border-2 border-dashed border-slate-300 rounded-lg bg-white flex items-center justify-center overflow-hidden p-2 shadow-inner">
                 {formData.firmaDigital ? (
                   <img
                     src={formData.firmaDigital}
@@ -275,34 +309,38 @@ export const AdminProfileView: React.FC<AdminProfileViewProps> = ({
                     className="max-h-full max-w-full object-contain"
                   />
                 ) : (
-                  <span className="text-xs text-slate-400">Sin firma</span>
+                  <div className="flex flex-col items-center text-slate-400 text-xs">
+                    <PenTool className="w-5 h-5 mb-1 text-slate-300" />
+                    <span>Sin firma registrada</span>
+                  </div>
                 )}
               </div>
 
-              <div className="flex flex-col gap-2">
+              {/* Actions */}
+              <div className="flex flex-col gap-2 flex-1">
                 <button
                   type="button"
-                  onClick={() => signatureInputRef.current?.click()}
-                  className="px-3 py-1.5 text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-white rounded-md transition-colors"
+                  onClick={handleOpenSignModal}
+                  className="inline-flex items-center justify-center gap-2 px-4 py-2 text-xs font-bold bg-neutral-900 hover:bg-[#D60000] text-white rounded-lg transition-colors cursor-pointer shadow-xs active:scale-98"
                 >
-                  {formData.firmaDigital ? 'Reemplazar Firma' : 'Cargar Firma'}
+                  <PenTool className="w-3.5 h-3.5" />
+                  <span>{formData.firmaDigital ? 'Volver a Firmar en Pantalla' : 'Abrir Ventana para Firmar'}</span>
                 </button>
+
                 {formData.firmaDigital && (
                   <button
                     type="button"
-                    onClick={() => setFormData((prev) => ({ ...prev, firmaDigital: undefined }))}
-                    className="text-xs text-red-600 hover:text-red-700 text-left font-medium"
+                    onClick={handleRemoveSignature}
+                    className="text-xs text-rose-600 hover:text-rose-700 text-left font-medium flex items-center gap-1 cursor-pointer self-start"
                   >
-                    Eliminar firma
+                    <Trash2 className="w-3 h-3" />
+                    <span>Eliminar firma digital</span>
                   </button>
                 )}
-                <input
-                  ref={signatureInputRef}
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={handleSignatureUpload}
-                />
+
+                <p className="text-[11px] text-slate-500">
+                  La carga de archivos de firma ha sido desactivada. Puedes trazar tu firma a mano alzada en la pantalla con tu dedo o mouse para máxima autenticidad.
+                </p>
               </div>
             </div>
           </div>
@@ -310,14 +348,93 @@ export const AdminProfileView: React.FC<AdminProfileViewProps> = ({
           <div className="pt-2 flex justify-end">
             <button
               type="submit"
-              className="inline-flex items-center gap-2 px-5 py-2 bg-[#D60000] hover:bg-[#b50000] text-white font-bold text-xs rounded-lg transition-all shadow-xs active:scale-95"
+              className="inline-flex items-center gap-2 px-6 py-2.5 bg-[#D60000] hover:bg-[#b50000] text-white font-bold text-xs rounded-lg transition-all shadow-xs active:scale-95 cursor-pointer"
             >
               <Save className="w-4 h-4" />
-              Guardar Cambios
+              <span>Guardar Cambios de Perfil</span>
             </button>
           </div>
         </div>
       </form>
+
+      {/* Ventana Flotante Modal para Firmar */}
+      {isSignModalOpen && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs animate-fade-in">
+          <div className="bg-white rounded-2xl max-w-lg w-full border border-slate-300 overflow-hidden shadow-2xl text-slate-900">
+            {/* Modal Header */}
+            <div className="px-5 py-4 bg-slate-900 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <PenTool className="w-5 h-5 text-red-400" />
+                <div>
+                  <h4 className="font-bold text-sm text-white">
+                    Ventana de Firma Digital del Usuario
+                  </h4>
+                  <p className="text-[11px] text-slate-300">
+                    Traza tu firma sobre el recuadro con el dedo o puntero
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsSignModalOpen(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body: Signature Pad */}
+            <div className="p-5 space-y-4">
+              <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                <SignaturePad
+                  ref={signaturePadRef}
+                  label="Firma de Conformidad Oficial"
+                  initialSignature={tempSignature}
+                  onSave={(dataUrl) => setTempSignature(dataUrl)}
+                  onClear={() => setTempSignature(undefined)}
+                />
+              </div>
+
+              <p className="text-[11px] text-slate-500 leading-relaxed">
+                Esta firma quedará vinculada a tu perfil y se plasmará automáticamente en los formatos oficiales de servicio técnico SOT-REP que generes.
+              </p>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-5 py-3.5 bg-slate-100 border-t border-slate-200 flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => {
+                  signaturePadRef.current?.clear();
+                  setTempSignature(undefined);
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-200 rounded-lg cursor-pointer"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Limpiar Trazo</span>
+              </button>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsSignModalOpen(false)}
+                  className="px-3.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-200 rounded-lg cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveSignatureFromModal}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg shadow-sm cursor-pointer transition-transform active:scale-95"
+                >
+                  <Check className="w-4 h-4 stroke-[2.5]" />
+                  <span>Aceptar y Guardar Firma</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

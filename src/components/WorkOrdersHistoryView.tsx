@@ -19,6 +19,7 @@ import {
   Calendar,
   Sparkles,
   ChevronDown,
+  Trash2,
 } from 'lucide-react';
 
 interface WorkOrdersHistoryViewProps {
@@ -27,6 +28,7 @@ interface WorkOrdersHistoryViewProps {
   currentUserName: string;
   onViewReport: (report: ServiceReport) => void;
   onEditReport: (report: ServiceReport) => void;
+  onDeleteReport?: (report: ServiceReport) => void;
   onStatusChange?: (report: ServiceReport, newStatus: ServiceStatus) => void;
   onAcceptOrder?: (folio: string) => void;
   onNewReport: () => void;
@@ -38,6 +40,7 @@ export const WorkOrdersHistoryView: React.FC<WorkOrdersHistoryViewProps> = ({
   currentUserName,
   onViewReport,
   onEditReport,
+  onDeleteReport,
   onStatusChange,
   onAcceptOrder,
   onNewReport,
@@ -219,23 +222,30 @@ export const WorkOrdersHistoryView: React.FC<WorkOrdersHistoryViewProps> = ({
 
         <div className="bg-white p-3 rounded-xl border border-amber-200 bg-amber-50/40 shadow-2xs">
           <span className="text-[11px] text-amber-700 block font-medium flex items-center gap-1">
-            <Clock className="w-3 h-3 text-amber-600" /> En Revisión
+            <Clock className="w-3 h-3 text-amber-600" /> 1. En Revisión
           </span>
           <span className="text-lg font-black text-amber-800">{metrics.enRevision}</span>
         </div>
 
-        <div className="bg-white p-3 rounded-xl border border-emerald-200 bg-emerald-50/40 shadow-2xs">
-          <span className="text-[11px] text-emerald-700 block font-medium flex items-center gap-1">
-            <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Completadas
-          </span>
-          <span className="text-lg font-black text-emerald-800">{metrics.completadas}</span>
-        </div>
-
         <div className="bg-white p-3 rounded-xl border border-rose-200 bg-rose-50/40 shadow-2xs">
           <span className="text-[11px] text-rose-700 block font-medium flex items-center gap-1">
-            <Wrench className="w-3 h-3 text-rose-600" /> Pend. Refacción
+            <Wrench className="w-3 h-3 text-rose-600" /> 2. Pend. Refacción
           </span>
           <span className="text-lg font-black text-rose-800">{metrics.pendientes}</span>
+        </div>
+
+        <div className="bg-white p-3 rounded-xl border border-purple-200 bg-purple-50/40 shadow-2xs">
+          <span className="text-[11px] text-purple-700 block font-medium flex items-center gap-1">
+            <AlertTriangle className="w-3 h-3 text-purple-600" /> 3. Garantía
+          </span>
+          <span className="text-lg font-black text-purple-800">{metrics.garantia}</span>
+        </div>
+
+        <div className="bg-white p-3 rounded-xl border border-emerald-200 bg-emerald-50/40 shadow-2xs">
+          <span className="text-[11px] text-emerald-700 block font-medium flex items-center gap-1">
+            <CheckCircle2 className="w-3 h-3 text-emerald-600" /> 4. Completadas
+          </span>
+          <span className="text-lg font-black text-emerald-800">{metrics.completadas}</span>
         </div>
 
         <div className="bg-white p-3 rounded-xl border border-blue-200 bg-blue-50/40 shadow-2xs">
@@ -278,10 +288,10 @@ export const WorkOrdersHistoryView: React.FC<WorkOrdersHistoryViewProps> = ({
               className="bg-transparent font-medium text-slate-800 focus:outline-hidden cursor-pointer"
             >
               <option value="ALL">Todos los estatus</option>
-              <option value="En Revisión">En Revisión (Prioritario)</option>
-              <option value="Completado">Completado</option>
-              <option value="Pendiente Refacción">Pendiente Refacción</option>
-              <option value="Garantía">Garantía</option>
+              <option value="En Revisión">1. En Revisión</option>
+              <option value="Pendiente Refacción">2. Pendiente Refacción</option>
+              <option value="Garantía">3. Garantía</option>
+              <option value="Completado">4. Completado</option>
             </select>
           </div>
 
@@ -512,6 +522,17 @@ export const WorkOrdersHistoryView: React.FC<WorkOrdersHistoryViewProps> = ({
                           >
                             <Edit2 className="w-4 h-4" />
                           </button>
+
+                          {/* Delete from system and Supabase */}
+                          {onDeleteReport && (
+                            <button
+                              onClick={() => onDeleteReport(report)}
+                              title="Borrar orden de raíz del sistema y de Supabase"
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>

@@ -104,6 +104,17 @@ export const saveActiveSession = (
   if (window.sessionStorage) {
     saveToStorage(window.sessionStorage);
   }
+
+  // Sync module with URL hash so refresh always keeps exact page
+  if (module && VALID_MODULES.includes(module)) {
+    try {
+      if (window.history && window.history.replaceState) {
+        window.history.replaceState(null, '', `#${module}`);
+      } else {
+        window.location.hash = `#${module}`;
+      }
+    } catch {}
+  }
 };
 
 /**
@@ -155,13 +166,28 @@ export const loadActiveSession = (): {
   }
 
   let module: ActiveModule = 'metricas';
-  const rawModule = readItem(MODULE_STORAGE_KEY) as ActiveModule;
-  if (rawModule && VALID_MODULES.includes(rawModule)) {
-    // If technician, prevent access to admin-only 'empleados' module
-    if (role === 'tecnico' && rawModule === 'empleados') {
-      module = 'reportes';
-    } else {
-      module = rawModule;
+
+  // First check URL hash (e.g. #reportes, #historial, #notificaciones, #perfil)
+  if (typeof window !== 'undefined' && window.location.hash) {
+    const hashMod = window.location.hash.replace('#', '') as ActiveModule;
+    if (VALID_MODULES.includes(hashMod)) {
+      if (role === 'tecnico' && hashMod === 'empleados') {
+        module = 'reportes';
+      } else {
+        module = hashMod;
+      }
+    }
+  }
+
+  // If no hash matched, read from storage
+  if (module === 'metricas') {
+    const rawModule = readItem(MODULE_STORAGE_KEY) as ActiveModule;
+    if (rawModule && VALID_MODULES.includes(rawModule)) {
+      if (role === 'tecnico' && rawModule === 'empleados') {
+        module = 'reportes';
+      } else {
+        module = rawModule;
+      }
     }
   }
 

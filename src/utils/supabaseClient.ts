@@ -80,7 +80,7 @@ CREATE TABLE IF NOT EXISTS public.service_reports (
     tecnico_id TEXT,
     aceptada_por_tecnico BOOLEAN DEFAULT false,
     fecha_aceptada TIMESTAMPTZ,
-    status TEXT NOT NULL DEFAULT 'En Revisión' CHECK (status IN ('En Revisión', 'Completado', 'Pendiente Refacción', 'Garantía')),
+    status TEXT NOT NULL DEFAULT 'En Revisión' CHECK (status IN ('En Revisión', 'Pendiente Refacción', 'Garantía', 'Completado')),
     observaciones_generales TEXT DEFAULT '',
     created_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
@@ -92,12 +92,12 @@ ALTER TABLE public.service_reports ADD COLUMN IF NOT EXISTS aceptada_por_tecnico
 ALTER TABLE public.service_reports ADD COLUMN IF NOT EXISTS fecha_aceptada TIMESTAMPTZ;
 ALTER TABLE public.service_reports ADD COLUMN IF NOT EXISTS tecnico_id TEXT;
 
--- Habilitar RLS en reportes
+-- Habilitar RLS en reportes con permisos totales (SELECT, INSERT, UPDATE, DELETE)
 ALTER TABLE public.service_reports ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Permitir todo en reportes" ON public.service_reports;
 CREATE POLICY "Permitir todo en reportes"
-ON public.service_reports FOR ALL USING (true);
+ON public.service_reports FOR ALL USING (true) WITH CHECK (true);
 
 
 -- 3. TABLA DE CONFIGURACIÓN DE FOLIO OFICIAL Y CÓDIGO CONSECUTIVO
@@ -210,4 +210,17 @@ INSERT INTO public.employees (
 
 -- Verificación de usuarios insertados
 SELECT id, nombre, usuario, correo, rol, puesto, activo FROM public.employees;
+
+-- 6. HABILITAR REALTIME EN TODAS LAS TABLAS DE SOTEX (Para que se actualicen sin refrescar pantalla)
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
+    CREATE PUBLICATION supabase_realtime;
+  END IF;
+END $$;
+
+ALTER PUBLICATION supabase_realtime ADD TABLE public.system_notifications;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.service_reports;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.employees;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.configuracion_folios;
 `;

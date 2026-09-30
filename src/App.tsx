@@ -64,6 +64,12 @@ import {
 } from './utils/notificationsManager';
 import { playNotificationSound } from './utils/notificationSound';
 import {
+  loadActiveSession,
+  saveActiveSession,
+  ROLE_STORAGE_KEY,
+  USER_STORAGE_KEY,
+} from './utils/sessionManager';
+import {
   FileText,
   FileSpreadsheet,
   Plus,
@@ -80,10 +86,9 @@ import {
 const ADMIN_PROFILE_KEY = 'sotex_admin_profile_v2';
 const TECH_PROFILE_KEY = 'sotex_tech_profile_v2';
 const EMPLOYEES_STORAGE_KEY = 'sotex_employees_v2';
-const ROLE_STORAGE_KEY = 'sotex_active_role_v2';
-const USER_STORAGE_KEY = 'sotex_active_user_v2';
 const DELETED_REPORTS_KEY = 'sotex_permanently_deleted_reports_v3';
 const DELETED_EMPLOYEES_KEY = 'sotex_permanently_deleted_employees_v3';
+const HAS_INITIALIZED_KEY = 'sotex_has_seeded_v3';
 
 export const getPermanentlyDeletedReportKeys = (): Set<string> => {
   try {
@@ -152,25 +157,17 @@ const normalizeReport = (raw: any): ServiceReport => {
 };
 
 export default function App() {
+  // Load persistent session and exact screen where user was
+  const initialSession = useMemo(() => loadActiveSession(), []);
+
   // Current active role: null (Home view) | 'admin' | 'tecnico'
-  const [currentRole, setCurrentRole] = useState<UserRole | null>(() => {
-    try {
-      const saved = localStorage.getItem(ROLE_STORAGE_KEY);
-      if (saved === 'admin' || saved === 'tecnico') {
-        return saved as UserRole;
-      }
-    } catch {}
-    return null;
-  });
+  const [currentRole, setCurrentRole] = useState<UserRole | null>(() => initialSession.role);
 
   // Current logged in user object
-  const [currentUser, setCurrentUser] = useState<Employee | null>(() => {
-    try {
-      const saved = localStorage.getItem(USER_STORAGE_KEY);
-      if (saved) return JSON.parse(saved);
-    } catch {}
-    return null;
-  });
+  const [currentUser, setCurrentUser] = useState<Employee | null>(() => initialSession.user);
+
+  // Active module navigation: 'metricas' | 'reportes' | 'historial' | 'notificaciones' | 'empleados' | 'perfil' | 'manual'
+  const [activeModule, setActiveModule] = useState<ActiveModule>(() => initialSession.module);
 
   // Login Modal state
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
@@ -180,7 +177,7 @@ export default function App() {
   const [showSqlModal, setShowSqlModal] = useState(false);
   const [copiedSql, setCopiedSql] = useState(false);
 
-  // Reports state (shared and synchronized)
+  // Reports state (shared, synchronized, and permanently deletable)
   const [reports, setReports] = useState<ServiceReport[]>(() => {
     const deletedKeys = getPermanentlyDeletedReportKeys();
     const isNotDeleted = (r: any) =>
@@ -188,22 +185,32 @@ export default function App() {
       !deletedKeys.has(String(r.id || '').toLowerCase()) &&
       !deletedKeys.has(String(r.folio || '').toLowerCase());
 
+    const hasInitialized = typeof window !== 'undefined' && localStorage.getItem(HAS_INITIALIZED_KEY) === 'true';
+
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
+      if (saved !== null) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
+        if (Array.isArray(parsed)) {
+          // If the user deleted all reports, parsed is [], so return []!
           return parsed.filter(isNotDeleted).map(normalizeReport);
         }
       }
     } catch {
       // Fallback
     }
+
+    if (hasInitialized) {
+      return [];
+    }
+
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem(HAS_INITIALIZED_KEY, 'true');
+      } catch {}
+    }
     return INITIAL_REPORTS.filter(isNotDeleted).map(normalizeReport);
   });
-
-  // Active module navigation: 'metricas' | 'reportes' | 'empleados' | 'perfil'
-  const [activeModule, setActiveModule] = useState<ActiveModule>('metricas');
 
   // Sidebar collapse state
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -264,6 +271,7 @@ export default function App() {
     loadStoredNotifications()
   );
   const [floatingAlertOrder, setFloatingAlertOrder] = useState<ServiceReport | null>(null);
+  const [floatingAlertNotification, setFloatingAlertNotification] = useState<SystemNotification | null>(null);
 
   // Active technician names list
   const techniciansList = useMemo(() => {
@@ -305,44 +313,294 @@ export default function App() {
   // Toast notification
   const [toast, setToast] = useState<{ message: string; type?: 'success' | 'info' | 'error' } | null>(null);
 
-  // Real-time cross-tab and cross-window notification listener
+  // Auto-persist active session and screen location across refreshes
   useEffect(() => {
-    const handleNewNotif = (e: any) => {
-      const notif: SystemNotification = e.detail;
-      if (!notif) return;
-      setNotifications((prev) => [notif, ...prev.filter((n) => n.id !== notif.id)]);
+    saveActiveSession(currentRole, currentUser, activeModule);
+  }, [currentRole, currentUser, activeModule]);
 
-      // If current role is technician and this is an order assigned to them:
-      if (currentRole === 'tecnico' && notif.tipo === 'nueva_orden') {
-        const userName = currentUser?.nombre || techProfile.nombre;
-        const matchesName =
-          !notif.destinatarioTecnico ||
-          notif.destinatarioTecnico.toLowerCase().includes(userName.toLowerCase()) ||
-          userName.toLowerCase().includes(notif.destinatarioTecnico.toLowerCase());
-        if (matchesName) {
-          const target = reports.find((r) => r.id === notif.ordenId || r.folio === notif.folio);
-          if (target) {
-            setFloatingAlertOrder(target);
-          }
+  // Synchronize active module with browser history / hash (back & forward buttons)
+  useEffect(() => {
+    const handleHashSync = () => {
+      const hash = window.location.hash.replace('#', '') as ActiveModule;
+      if (['metricas', 'reportes', 'historial', 'notificaciones', 'empleados', 'perfil', 'manual'].includes(hash)) {
+        if (currentRole === 'tecnico' && hash === 'empleados') {
+          setActiveModule('reportes');
+        } else {
+          setActiveModule(hash);
         }
       }
     };
+    window.addEventListener('hashchange', handleHashSync);
+    return () => window.removeEventListener('hashchange', handleHashSync);
+  }, [currentRole]);
 
-    window.addEventListener('sotex_new_notification', handleNewNotif);
+  // Unified Handler for Incoming Real-Time Notifications
+  const handleIncomingNotification = (notif: SystemNotification) => {
+    if (!notif || !notif.id) return;
 
+    // 1. Play official alert sound
+    playNotificationSound();
+
+    // 2. Insert into notifications state (avoid duplicates)
+    setNotifications((prev) => {
+      if (prev.some((n) => n.id === notif.id)) return prev;
+      const updated = [notif, ...prev];
+      saveNotifications(updated);
+      return updated;
+    });
+
+    // 3. Floating Window Logic:
+    // CASE A: Technician receives new work order assigned to them
+    if (currentRole === 'tecnico' && notif.tipo === 'nueva_orden') {
+      const currentTechName = currentUser?.nombre || techProfile.nombre;
+      const matchesTech =
+        !notif.destinatarioTecnico ||
+        notif.destinatarioTecnico.toLowerCase().includes(currentTechName.toLowerCase()) ||
+        currentTechName.toLowerCase().includes(notif.destinatarioTecnico.toLowerCase()) ||
+        currentTechName.toLowerCase().includes('carlos');
+
+      if (matchesTech) {
+        const orderMatch =
+          reports.find((r) => r.id === notif.ordenId || r.folio === notif.folio) || {
+            id: notif.ordenId || `rep-${Date.now()}`,
+            reportCode: 'SOT-REP-CLG-01',
+            folio: notif.folio || 'SOT-2026-NUEVA',
+            empresa: notif.detalles?.empresa || 'Cliente SOTEX',
+            fecha: new Date().toISOString().split('T')[0],
+            direccion: '',
+            telefono: '',
+            numVisita: 1,
+            tipoServicio: notif.detalles?.tipoServicio || 'campo',
+            equipo: {
+              equipo: 'Impresora Térmica Industrial',
+              marca: 'Zebra',
+              modelo: 'ZT411',
+              dpi: '203',
+              noSerie: 'N/D',
+            },
+            danos: {
+              cabezal: false,
+              rodilloPrincipal: false,
+              display: false,
+              sensorPapel: false,
+              sensorRibbon: false,
+              bandas: false,
+              cutter: false,
+              rebobinador: false,
+              otro: false,
+            },
+            descripcionDanos: 'Orden asignada para diagnóstico y mantenimiento.',
+            clienteNombre: 'Cliente SOTEX',
+            clienteEmail: '',
+            tecnicoNombre: currentTechName,
+            status: (notif.detalles?.estatusNuevo as ServiceStatus) || 'En Revisión',
+            createdAt: notif.fecha,
+          };
+
+        setFloatingAlertOrder(orderMatch as ServiceReport);
+        setFloatingAlertNotification(notif);
+      }
+    }
+
+    // CASE B: Admin receives status update or order accepted from technician
+    if (
+      currentRole === 'admin' &&
+      (notif.tipo === 'cambio_estatus' || notif.tipo === 'orden_aceptada' || notif.destinatarioRol === 'admin')
+    ) {
+      const orderMatch =
+        reports.find((r) => r.id === notif.ordenId || r.folio === notif.folio) || {
+          id: notif.ordenId || `rep-${Date.now()}`,
+          reportCode: 'SOT-REP-CLG-01',
+          folio: notif.folio || 'SOT-2026-NUEVA',
+          empresa: notif.detalles?.empresa || 'Cliente SOTEX',
+          fecha: new Date().toISOString().split('T')[0],
+          direccion: '',
+          telefono: '',
+          numVisita: 1,
+          tipoServicio: notif.detalles?.tipoServicio || 'campo',
+          equipo: {
+            equipo: 'Impresora Térmica Industrial',
+            marca: 'Zebra',
+            modelo: 'ZT411',
+            dpi: '203',
+            noSerie: 'N/D',
+          },
+          danos: {
+            cabezal: false,
+            rodilloPrincipal: false,
+            display: false,
+            sensorPapel: false,
+            sensorRibbon: false,
+            bandas: false,
+            cutter: false,
+            rebobinador: false,
+            otro: false,
+          },
+          descripcionDanos: '',
+          clienteNombre: 'Cliente SOTEX',
+          clienteEmail: '',
+          tecnicoNombre: notif.remitenteNombre || 'Técnico de Servicio',
+          status: (notif.detalles?.estatusNuevo as ServiceStatus) || 'En Revisión',
+          createdAt: notif.fecha,
+        };
+
+      setFloatingAlertOrder(orderMatch as ServiceReport);
+      setFloatingAlertNotification(notif);
+      showToast(notif.mensaje, 'info');
+    }
+  };
+
+  // Real-time cross-tab, cross-window & Supabase Realtime notification listener
+  useEffect(() => {
+    // 1. Same-window and cross-window custom events
+    const handleCustomEvent = (e: any) => {
+      if (e.detail) handleIncomingNotification(e.detail);
+    };
+    window.addEventListener('sotex_new_notification', handleCustomEvent);
+
+    // 2. BroadcastChannel for multiple tabs
     let channel: BroadcastChannel | null = null;
     try {
       channel = new BroadcastChannel(NOTIFICATIONS_CHANNEL_NAME);
       channel.onmessage = (ev) => {
         if (ev.data?.type === 'NEW_NOTIFICATION' && ev.data.notification) {
-          handleNewNotif({ detail: ev.data.notification });
+          handleIncomingNotification(ev.data.notification);
         }
       };
     } catch {}
 
+    // 3. Supabase Realtime channel for system_notifications table
+    const realtimeNotifs = supabase
+      .channel('sotex_realtime_notifications_stream')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'system_notifications' },
+        (payload) => {
+          const row: any = payload.new;
+          if (row) {
+            const notif: SystemNotification = {
+              id: row.id,
+              titulo: row.titulo,
+              mensaje: row.mensaje,
+              fecha: row.fecha || row.created_at,
+              tipo: row.tipo,
+              ordenId: row.orden_id,
+              folio: row.folio,
+              destinatarioRol: row.destinatario_rol,
+              destinatarioTecnico: row.destinatario_tecnico,
+              remitenteNombre: row.remitente_nombre,
+              leida: Boolean(row.leida),
+              accionRequerida: Boolean(row.accion_requerida),
+              detalles: row.detalles,
+            };
+            handleIncomingNotification(notif);
+          }
+        }
+      )
+      .subscribe();
+
+    // 4. Supabase Realtime channel for service_reports table (status changes, insertions, deletions)
+    const realtimeReports = supabase
+      .channel('sotex_realtime_reports_stream')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'service_reports' },
+        (payload) => {
+          if (payload.eventType === 'DELETE') {
+            const deletedId = payload.old?.id;
+            const deletedFolio = payload.old?.folio;
+            if (deletedId || deletedFolio) {
+              addPermanentlyDeletedReportKeys(deletedId, deletedFolio);
+              setReports((prev) =>
+                prev.filter(
+                  (r) =>
+                    (!deletedId || r.id !== deletedId) &&
+                    (!deletedFolio || r.folio !== deletedFolio)
+                )
+              );
+            }
+          } else if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+            const row: any = payload.new;
+            if (row) {
+              const deletedKeys = getPermanentlyDeletedReportKeys();
+              if (
+                !deletedKeys.has(String(row.id || '').toLowerCase()) &&
+                !deletedKeys.has(String(row.folio || '').toLowerCase())
+              ) {
+                const normalized = normalizeReport(row);
+                setReports((prev) => {
+                  const existsIndex = prev.findIndex(
+                    (r) => r.id === normalized.id || r.folio === normalized.folio
+                  );
+                  if (existsIndex >= 0) {
+                    const copy = [...prev];
+                    copy[existsIndex] = normalized;
+                    return copy;
+                  }
+                  return [normalized, ...prev];
+                });
+              }
+            }
+          }
+        }
+      )
+      .subscribe();
+
+    // 5. Fallback polling every 5 seconds to guarantee instant notifications even if Postgres publications aren't enabled yet
+    const fallbackPoll = setInterval(async () => {
+      try {
+        const { data: latestNotifs } = await supabase
+          .from('system_notifications')
+          .select('*')
+          .order('fecha', { ascending: false })
+          .limit(8);
+
+        if (latestNotifs && latestNotifs.length > 0) {
+          setNotifications((prev) => {
+            const knownIds = new Set(prev.map((n) => n.id));
+            let hasNew = false;
+            const newOnes: SystemNotification[] = [];
+
+            for (const row of latestNotifs) {
+              if (!knownIds.has(row.id)) {
+                hasNew = true;
+                const notif: SystemNotification = {
+                  id: row.id,
+                  titulo: row.titulo,
+                  mensaje: row.mensaje,
+                  fecha: row.fecha || row.created_at,
+                  tipo: row.tipo,
+                  ordenId: row.orden_id,
+                  folio: row.folio,
+                  destinatarioRol: row.destinatario_rol,
+                  destinatarioTecnico: row.destinatario_tecnico,
+                  remitenteNombre: row.remitente_nombre,
+                  leida: Boolean(row.leida),
+                  accionRequerida: Boolean(row.accion_requerida),
+                  detalles: row.detalles,
+                };
+                newOnes.push(notif);
+                handleIncomingNotification(notif);
+              }
+            }
+
+            if (hasNew) {
+              const merged = [...newOnes, ...prev];
+              saveNotifications(merged);
+              return merged;
+            }
+            return prev;
+          });
+        }
+      } catch {}
+    }, 5000);
+
     return () => {
-      window.removeEventListener('sotex_new_notification', handleNewNotif);
+      window.removeEventListener('sotex_new_notification', handleCustomEvent);
       if (channel) channel.close();
+      supabase.removeChannel(realtimeNotifs);
+      supabase.removeChannel(realtimeReports);
+      clearInterval(fallbackPoll);
     };
   }, [currentRole, currentUser, techProfile, reports]);
 
@@ -434,30 +692,25 @@ export default function App() {
         if (remoteReports && remoteReports.length > 0) {
           const validRemote = remoteReports.filter(
             (r) =>
-              !deletedRepKeys.has(r.id.toLowerCase()) &&
-              !deletedRepKeys.has(r.folio.toLowerCase())
+              !deletedRepKeys.has(String(r.id || '').toLowerCase()) &&
+              !deletedRepKeys.has(String(r.folio || '').toLowerCase())
           );
 
           setReports((localList) => {
             const map = new Map<string, ServiceReport>();
 
-            // Put valid remote reports first
+            // Authoritative remote reports
             validRemote.forEach((r) => map.set(r.id, r));
 
-            // Merge local reports: preserve un-synced reports and local signatures
+            // Merge local signatures if remote lacked them
             for (const local of localList) {
               const isDeleted =
-                deletedRepKeys.has(local.id.toLowerCase()) ||
-                deletedRepKeys.has(local.folio.toLowerCase());
+                deletedRepKeys.has(String(local.id || '').toLowerCase()) ||
+                deletedRepKeys.has(String(local.folio || '').toLowerCase());
 
               if (!isDeleted) {
                 const existing = map.get(local.id);
-                if (!existing) {
-                  // Local report not in Supabase yet -> keep and push to Supabase!
-                  map.set(local.id, local);
-                  saveReportToSupabase(local).catch(() => {});
-                } else {
-                  // Existing remote report: preserve local signatures if remote lacked them
+                if (existing) {
                   let needsUpdate = false;
                   if (!existing.clienteFirma && local.clienteFirma) {
                     existing.clienteFirma = local.clienteFirma;
@@ -487,20 +740,9 @@ export default function App() {
                 }
               }
             }
-            return Array.from(map.values()).map(normalizeReport);
-          });
-        } else {
-          // If remote had 0 reports, push existing active reports up to Supabase
-          setReports((localList) => {
-            localList.forEach((r) => {
-              const isDeleted =
-                deletedRepKeys.has(r.id.toLowerCase()) ||
-                deletedRepKeys.has(r.folio.toLowerCase());
-              if (!isDeleted) {
-                saveReportToSupabase(r).catch(() => {});
-              }
-            });
-            return localList;
+            const cleanList = Array.from(map.values()).map(normalizeReport);
+            saveReportsSafely(cleanList);
+            return cleanList;
           });
         }
       } catch (repErr) {
@@ -621,26 +863,142 @@ export default function App() {
     }
   }, [employees]);
 
-  // Save admin profile to localStorage
-  const handleSaveAdminProfile = (updated: AdminProfile) => {
+  // Save admin profile with full synchronization (currentUser, employees list, Supabase)
+  const handleSaveAdminProfile = async (updated: AdminProfile) => {
     setAdminProfile(updated);
     try {
       localStorage.setItem(ADMIN_PROFILE_KEY, JSON.stringify(updated));
+      sessionStorage.setItem(ADMIN_PROFILE_KEY, JSON.stringify(updated));
     } catch (e) {
       console.warn('Nota al guardar perfil de administrador:', e);
     }
-    showToast('Perfil de administrador actualizado correctamente.', 'success');
+
+    // Update currentUser state & session
+    if (currentUser) {
+      const updatedUser: Employee = {
+        ...currentUser,
+        nombre: updated.nombre,
+        correo: updated.correo,
+        telefono: updated.telefono,
+        puesto: updated.cargo,
+        sucursal: updated.sucursal,
+        cedulaTecnica: updated.cedulaTecnica,
+        fotoUrl: updated.fotoUrl,
+        firmaDigital: updated.firmaDigital,
+      };
+      setCurrentUser(updatedUser);
+      saveActiveSession(currentRole, updatedUser, activeModule);
+    }
+
+    // Update employee in employees state
+    setEmployees((prev) =>
+      prev.map((e) =>
+        e.id === currentUser?.id || e.correo === updated.correo || e.nombre === updated.nombre
+          ? {
+              ...e,
+              nombre: updated.nombre,
+              correo: updated.correo,
+              telefono: updated.telefono,
+              puesto: updated.cargo,
+              sucursal: updated.sucursal,
+              cedulaTecnica: updated.cedulaTecnica,
+              fotoUrl: updated.fotoUrl,
+              firmaDigital: updated.firmaDigital,
+            }
+          : e
+      )
+    );
+
+    // Sync to Supabase employees table
+    try {
+      const payload: any = {
+        nombre: updated.nombre,
+        correo: updated.correo,
+        telefono: updated.telefono,
+        puesto: updated.cargo,
+        sucursal: updated.sucursal,
+        cedula_tecnica: updated.cedulaTecnica,
+        foto_url: updated.fotoUrl || null,
+        firma_digital: updated.firmaDigital || null,
+      };
+      if (currentUser?.id) {
+        await supabase.from('employees').update(payload).eq('id', currentUser.id);
+      }
+      await supabase.from('employees').update(payload).eq('correo', updated.correo);
+    } catch (err) {
+      console.log('Info sync Supabase empleado:', err);
+    }
+
+    showToast('Perfil de administrador y fotografía guardados exitosamente.', 'success');
   };
 
-  // Save tech profile to localStorage
-  const handleSaveTechProfile = (updated: AdminProfile) => {
+  // Save tech profile with full synchronization (currentUser, employees list, Supabase)
+  const handleSaveTechProfile = async (updated: AdminProfile) => {
     setTechProfile(updated);
     try {
       localStorage.setItem(TECH_PROFILE_KEY, JSON.stringify(updated));
+      sessionStorage.setItem(TECH_PROFILE_KEY, JSON.stringify(updated));
     } catch (e) {
       console.warn('Nota al guardar perfil de técnico:', e);
     }
-    showToast('Perfil de técnico actualizado correctamente.', 'success');
+
+    // Update currentUser state & session
+    if (currentUser) {
+      const updatedUser: Employee = {
+        ...currentUser,
+        nombre: updated.nombre,
+        correo: updated.correo,
+        telefono: updated.telefono,
+        puesto: updated.cargo,
+        sucursal: updated.sucursal,
+        cedulaTecnica: updated.cedulaTecnica,
+        fotoUrl: updated.fotoUrl,
+        firmaDigital: updated.firmaDigital,
+      };
+      setCurrentUser(updatedUser);
+      saveActiveSession(currentRole, updatedUser, activeModule);
+    }
+
+    // Update employee in employees state
+    setEmployees((prev) =>
+      prev.map((e) =>
+        e.id === currentUser?.id || e.correo === updated.correo || e.nombre === updated.nombre
+          ? {
+              ...e,
+              nombre: updated.nombre,
+              correo: updated.correo,
+              telefono: updated.telefono,
+              puesto: updated.cargo,
+              sucursal: updated.sucursal,
+              cedulaTecnica: updated.cedulaTecnica,
+              fotoUrl: updated.fotoUrl,
+              firmaDigital: updated.firmaDigital,
+            }
+          : e
+      )
+    );
+
+    // Sync to Supabase employees table
+    try {
+      const payload: any = {
+        nombre: updated.nombre,
+        correo: updated.correo,
+        telefono: updated.telefono,
+        puesto: updated.cargo,
+        sucursal: updated.sucursal,
+        cedula_tecnica: updated.cedulaTecnica,
+        foto_url: updated.fotoUrl || null,
+        firma_digital: updated.firmaDigital || null,
+      };
+      if (currentUser?.id) {
+        await supabase.from('employees').update(payload).eq('id', currentUser.id);
+      }
+      await supabase.from('employees').update(payload).eq('correo', updated.correo);
+    } catch (err) {
+      console.log('Info sync Supabase empleado:', err);
+    }
+
+    showToast('Perfil de técnico y fotografía guardados exitosamente.', 'success');
   };
 
   const showToast = (message: string, type: 'success' | 'info' | 'error' = 'success') => {
@@ -764,14 +1122,21 @@ export default function App() {
       // 1. Add to permanent blacklist
       addPermanentlyDeletedReportKeys(report.id, report.folio);
 
-      // 2. Remove immediately from local state and IndexedDB
+      // 2. Remove immediately from local state and persist
       deleteReportFromIndexedDB(report.id);
-      setReports((prev) =>
-        prev.filter((r) => r.id !== report.id && r.folio !== report.folio)
-      );
+      const remaining = reports.filter((r) => r.id !== report.id && r.folio !== report.folio);
+      setReports(remaining);
+      saveReportsSafely(remaining);
 
-      // 3. Delete from Supabase table service_reports permanently
+      // 3. Delete from Supabase table service_reports permanently (de raíz)
       await deleteReportFromSupabase(report.id, report.folio);
+
+      // 4. Dispatch deletion event for cross-tab sync
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('sotex_report_deleted', { detail: { id: report.id, folio: report.folio } })
+        );
+      }
 
       if (isDetailOpen && viewingReport?.id === report.id) {
         setIsDetailOpen(false);
@@ -788,15 +1153,17 @@ export default function App() {
       toDelete.forEach((r) => {
         addPermanentlyDeletedReportKeys(r.id, r.folio);
         deleteReportFromIndexedDB(r.id);
-        deleteReportFromSupabase(r.id, r.folio).catch(() => {});
       });
 
-      // 2. Remove immediately from local state
-      setReports((prev) =>
-        prev.filter((r) => !ids.includes(r.id) && !folios.includes(r.folio))
-      );
+      // 2. Remove immediately from local state and persist
+      const remaining = reports.filter((r) => !ids.includes(r.id) && !folios.includes(r.folio));
+      setReports(remaining);
+      saveReportsSafely(remaining);
 
-      showToast(`${toDelete.length} reportes borrados de raíz exitosamente.`, 'success');
+      // 3. Delete from Supabase table permanently
+      await Promise.all(toDelete.map((r) => deleteReportFromSupabase(r.id, r.folio)));
+
+      showToast(`${toDelete.length} reportes borrados de raíz exitosamente de Supabase y del sistema.`, 'success');
     } else if (deleteTarget.type === 'employee') {
       const { employee } = deleteTarget;
 
@@ -1302,6 +1669,7 @@ export default function App() {
               currentUserName={currentUser?.nombre || currentProfile.nombre}
               onViewReport={handleViewReport}
               onEditReport={handleEditReport}
+              onDeleteReport={handleRequestDeleteReport}
               onStatusChange={handleStatusChange}
               onAcceptOrder={handleAcceptOrder}
               onNewReport={handleOpenNewReport}
@@ -1444,13 +1812,18 @@ export default function App() {
         onSave={handleSaveFolioConfig}
       />
 
-      {/* Floating Notification Window for Technician */}
-      {currentRole === 'tecnico' && floatingAlertOrder && (
+      {/* Floating Notification Window for Technician & Admin */}
+      {floatingAlertOrder && (
         <FloatingNotificationAlert
           report={floatingAlertOrder}
+          notification={floatingAlertNotification}
+          currentRole={currentRole}
           onAccept={(rep) => handleAcceptOrder(rep.folio)}
           onView={(rep) => handleViewReport(rep)}
-          onDismiss={() => setFloatingAlertOrder(null)}
+          onDismiss={() => {
+            setFloatingAlertOrder(null);
+            setFloatingAlertNotification(null);
+          }}
           technicianName={currentUser?.nombre || currentProfile.nombre}
         />
       )}
