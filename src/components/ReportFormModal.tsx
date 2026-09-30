@@ -9,7 +9,7 @@ import {
   UserRole,
   FolioConfig,
 } from '../types';
-import { SignaturePad } from './SignaturePad';
+import { SignaturePad, SignaturePadRef } from './SignaturePad';
 import {
   X,
   Upload,
@@ -113,10 +113,12 @@ export const ReportFormModal: React.FC<ReportFormModalProps> = ({
   const [clienteNombre, setClienteNombre] = useState('');
   const [clienteEmail, setClienteEmail] = useState('');
   const [clienteFirma, setClienteFirma] = useState<string | undefined>(undefined);
+  const clientSigPadRef = useRef<SignaturePadRef | null>(null);
 
   // Engineer / Technician
   const [tecnicoNombre, setTecnicoNombre] = useState('');
   const [tecnicoFirma, setTecnicoFirma] = useState<string | undefined>(undefined);
+  const techSigPadRef = useRef<SignaturePadRef | null>(null);
 
   // Status (Default: 'En Revisión' as first priority)
   const [status, setStatus] = useState<ServiceStatus>('En Revisión');
@@ -309,6 +311,16 @@ export const ReportFormModal: React.FC<ReportFormModalProps> = ({
       return;
     }
 
+    // Read latest canvas signature data from pad refs if available, fallback to state
+    const padClientFirma = clientSigPadRef.current?.getSignature();
+    const padTechFirma = techSigPadRef.current?.getSignature();
+
+    const finalClientFirma =
+      padClientFirma !== undefined ? padClientFirma : clienteFirma;
+
+    const finalTecnicoFirma =
+      padTechFirma !== undefined ? padTechFirma : tecnicoFirma;
+
     const reportData: ServiceReport = {
       id: initialReport?.id || `rep-${Date.now()}`,
       reportCode,
@@ -333,9 +345,9 @@ export const ReportFormModal: React.FC<ReportFormModalProps> = ({
       evidenciasFotos,
       clienteNombre: clienteNombre.trim(),
       clienteEmail: clienteEmail.trim(),
-      clienteFirma,
+      clienteFirma: finalClientFirma,
       tecnicoNombre: tecnicoNombre.trim(),
-      tecnicoFirma,
+      tecnicoFirma: finalTecnicoFirma,
       aceptadaPorTecnico: initialReport?.aceptadaPorTecnico ?? false,
       fechaAceptada: initialReport?.fechaAceptada,
       status,
@@ -997,6 +1009,7 @@ export const ReportFormModal: React.FC<ReportFormModalProps> = ({
                   />
                 </div>
                 <SignaturePad
+                  ref={clientSigPadRef}
                   label="Firma del Cliente"
                   initialSignature={clienteFirma}
                   onSave={(dataUrl) => setClienteFirma(dataUrl)}
@@ -1054,6 +1067,7 @@ export const ReportFormModal: React.FC<ReportFormModalProps> = ({
                 </div>
 
                 <SignaturePad
+                  ref={techSigPadRef}
                   label="Firma del Ingeniero SOTEX"
                   initialSignature={tecnicoFirma}
                   onSave={(dataUrl) => setTecnicoFirma(dataUrl)}

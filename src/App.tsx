@@ -39,6 +39,12 @@ import { exportReportsToExcel } from './utils/excelExport';
 import { generateAllReportsPDF, generateServiceReportPDF } from './utils/pdfExport';
 import { supabase, SUPABASE_SETUP_SQL } from './utils/supabaseClient';
 import {
+  saveReportToSupabase,
+  fetchReportsFromSupabase,
+  deleteReportFromSupabase,
+  normalizeSupabaseReportRow,
+} from './utils/supabaseReports';
+import {
   saveReportsSafely,
   loadReportsFromIndexedDB,
   deleteReportFromIndexedDB,
@@ -142,52 +148,7 @@ const DEFAULT_TECH_PROFILE: AdminProfile = {
 };
 
 const normalizeReport = (raw: any): ServiceReport => {
-  return {
-    id: raw?.id || `rep-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-    reportCode: raw?.reportCode || raw?.report_code || 'SOT-REP-CLG-01',
-    folio: raw?.folio || 'SOT-2026-000',
-    tipoServicio: (raw?.tipoServicio === 'sotex' || raw?.tipo_servicio === 'sotex') ? 'sotex' : 'campo',
-    empresa: raw?.empresa || 'Cliente SOTEX',
-    fecha: raw?.fecha || new Date().toISOString().split('T')[0],
-    direccion: raw?.direccion || '',
-    telefono: raw?.telefono || '',
-    numVisita: (raw?.numVisita >= 1 && raw?.numVisita <= 4 ? raw.numVisita : 1) as VisitNumber,
-    equipo: {
-      equipo: raw?.equipo?.equipo || 'Impresora Térmica',
-      marca: raw?.equipo?.marca || 'Zebra',
-      modelo: raw?.equipo?.modelo || 'ZT411',
-      dpi: raw?.equipo?.dpi || '203',
-      noSerie: raw?.equipo?.noSerie || 'N/D',
-    },
-    danos: {
-      cabezal: Boolean(raw?.danos?.cabezal),
-      rodilloPrincipal: Boolean(raw?.danos?.rodilloPrincipal),
-      display: Boolean(raw?.danos?.display),
-      sensorPapel: Boolean(raw?.danos?.sensorPapel),
-      sensorRibbon: Boolean(raw?.danos?.sensorRibbon),
-      bandas: Boolean(raw?.danos?.bandas),
-      cutter: Boolean(raw?.danos?.cutter),
-      rebobinador: Boolean(raw?.danos?.rebobinador),
-      otro: Boolean(raw?.danos?.otro),
-    },
-    descripcionDanos: raw?.descripcionDanos || raw?.descripcion_danos || '',
-    pruebaCabezalResultado: raw?.pruebaCabezalResultado || raw?.prueba_cabezal_resultado || '',
-    pruebaCabezalImagen: raw?.pruebaCabezalImagen || raw?.prueba_cabezal_imagen,
-    evidenciasFotos: Array.isArray(raw?.evidenciasFotos || raw?.evidencias_fotos)
-      ? (raw?.evidenciasFotos || raw?.evidencias_fotos)
-      : [],
-    clienteNombre: raw?.clienteNombre || raw?.cliente_nombre || '',
-    clienteEmail: raw?.clienteEmail || raw?.cliente_email || '',
-    clienteFirma: raw?.clienteFirma || raw?.cliente_firma,
-    tecnicoNombre: raw?.tecnicoNombre || raw?.tecnico_nombre || 'Ing. Javier Rojas (SOTEX)',
-    tecnicoFirma: raw?.tecnicoFirma || raw?.tecnico_firma,
-    tecnicoId: raw?.tecnicoId || raw?.tecnico_id,
-    aceptadaPorTecnico: Boolean(raw?.aceptadaPorTecnico ?? raw?.aceptada_por_tecnico ?? false),
-    fechaAceptada: raw?.fechaAceptada || raw?.fecha_aceptada,
-    status: raw?.status || 'En Revisión',
-    observacionesGenerales: raw?.observacionesGenerales || raw?.observaciones_generales || '',
-    createdAt: raw?.createdAt || raw?.created_at || new Date().toISOString(),
-  };
+  return normalizeSupabaseReportRow(raw);
 };
 
 export default function App() {
@@ -469,60 +430,77 @@ export default function App() {
 
       // 2. Sync Reports from Supabase
       try {
-        const { data: repData, error: repError } = await supabase.from('service_reports').select('*');
-        if (!repError && repData && repData.length > 0) {
-          const remoteReports: ServiceReport[] = repData
-            .map((d: any) =>
-              normalizeReport({
-                id: d.id,
-                reportCode: d.report_code || 'SOT-REP-CLG-01',
-                folio: d.folio,
-                tipoServicio: d.tipo_servicio || 'campo',
-                empresa: d.empresa,
-                fecha: d.fecha,
-                direccion: d.direccion || '',
-                telefono: d.telefono || '',
-                numVisita: d.num_visita || 1,
-                equipo: d.equipo || {},
-                danos: d.danos || {},
-                descripcionDanos: d.descripcion_danos || '',
-                pruebaCabezalResultado: d.prueba_cabezal_resultado || '',
-                pruebaCabezalImagen: d.prueba_cabezal_imagen,
-                evidenciasFotos: d.evidencias_fotos || [],
-                clienteNombre: d.cliente_nombre || '',
-                clienteEmail: d.cliente_email || '',
-                clienteFirma: d.cliente_firma,
-                tecnicoNombre: d.tecnico_nombre || '',
-                tecnicoFirma: d.tecnico_firma,
-                tecnicoId: d.tecnico_id,
-                aceptadaPorTecnico: d.aceptada_por_tecnico,
-                fechaAceptada: d.fecha_aceptada,
-                status: d.status || 'En Revisión',
-                observacionesGenerales: d.observaciones_generales || '',
-                createdAt: d.created_at,
-              })
-            )
-            .filter(
-              (r) =>
-                !deletedRepKeys.has(r.id.toLowerCase()) &&
-                !deletedRepKeys.has(r.folio.toLowerCase())
-            );
+        const remoteReports = await fetchReportsFromSupabase();
+        if (remoteReports && remoteReports.length > 0) {
+          const validRemote = remoteReports.filter(
+            (r) =>
+              !deletedRepKeys.has(r.id.toLowerCase()) &&
+              !deletedRepKeys.has(r.folio.toLowerCase())
+          );
 
           setReports((localList) => {
-            const merged = [...remoteReports];
+            const map = new Map<string, ServiceReport>();
+
+            // Put valid remote reports first
+            validRemote.forEach((r) => map.set(r.id, r));
+
+            // Merge local reports: preserve un-synced reports and local signatures
             for (const local of localList) {
               const isDeleted =
                 deletedRepKeys.has(local.id.toLowerCase()) ||
                 deletedRepKeys.has(local.folio.toLowerCase());
 
-              if (
-                !isDeleted &&
-                !merged.some((m) => m.id === local.id || m.folio === local.folio)
-              ) {
-                merged.push(local);
+              if (!isDeleted) {
+                const existing = map.get(local.id);
+                if (!existing) {
+                  // Local report not in Supabase yet -> keep and push to Supabase!
+                  map.set(local.id, local);
+                  saveReportToSupabase(local).catch(() => {});
+                } else {
+                  // Existing remote report: preserve local signatures if remote lacked them
+                  let needsUpdate = false;
+                  if (!existing.clienteFirma && local.clienteFirma) {
+                    existing.clienteFirma = local.clienteFirma;
+                    needsUpdate = true;
+                  }
+                  if (!existing.tecnicoFirma && local.tecnicoFirma) {
+                    existing.tecnicoFirma = local.tecnicoFirma;
+                    needsUpdate = true;
+                  }
+                  if (!existing.pruebaCabezalImagen && local.pruebaCabezalImagen) {
+                    existing.pruebaCabezalImagen = local.pruebaCabezalImagen;
+                    needsUpdate = true;
+                  }
+                  if (
+                    (!existing.evidenciasFotos || existing.evidenciasFotos.length === 0) &&
+                    local.evidenciasFotos &&
+                    local.evidenciasFotos.length > 0
+                  ) {
+                    existing.evidenciasFotos = local.evidenciasFotos;
+                    needsUpdate = true;
+                  }
+
+                  if (needsUpdate) {
+                    saveReportToSupabase(existing).catch(() => {});
+                  }
+                  map.set(local.id, existing);
+                }
               }
             }
-            return merged.map(normalizeReport);
+            return Array.from(map.values()).map(normalizeReport);
+          });
+        } else {
+          // If remote had 0 reports, push existing active reports up to Supabase
+          setReports((localList) => {
+            localList.forEach((r) => {
+              const isDeleted =
+                deletedRepKeys.has(r.id.toLowerCase()) ||
+                deletedRepKeys.has(r.folio.toLowerCase());
+              if (!isDeleted) {
+                saveReportToSupabase(r).catch(() => {});
+              }
+            });
+            return localList;
           });
         }
       } catch (repErr) {
@@ -793,20 +771,7 @@ export default function App() {
       );
 
       // 3. Delete from Supabase table service_reports permanently
-      try {
-        const { error: err1 } = await supabase
-          .from('service_reports')
-          .delete()
-          .eq('id', report.id);
-        if (report.folio) {
-          await supabase.from('service_reports').delete().eq('folio', report.folio);
-        }
-        if (err1) {
-          console.warn('Nota de Supabase al borrar reporte:', err1.message);
-        }
-      } catch (err) {
-        console.error('Error al borrar reporte en Supabase:', err);
-      }
+      await deleteReportFromSupabase(report.id, report.folio);
 
       if (isDetailOpen && viewingReport?.id === report.id) {
         setIsDetailOpen(false);
@@ -823,20 +788,13 @@ export default function App() {
       toDelete.forEach((r) => {
         addPermanentlyDeletedReportKeys(r.id, r.folio);
         deleteReportFromIndexedDB(r.id);
+        deleteReportFromSupabase(r.id, r.folio).catch(() => {});
       });
 
       // 2. Remove immediately from local state
       setReports((prev) =>
         prev.filter((r) => !ids.includes(r.id) && !folios.includes(r.folio))
       );
-
-      // 3. Delete from Supabase permanently
-      try {
-        await supabase.from('service_reports').delete().in('id', ids);
-        await supabase.from('service_reports').delete().in('folio', folios);
-      } catch (err) {
-        console.error('Error al borrar reportes en lote en Supabase:', err);
-      }
 
       showToast(`${toDelete.length} reportes borrados de raíz exitosamente.`, 'success');
     } else if (deleteTarget.type === 'employee') {
@@ -901,18 +859,8 @@ export default function App() {
     setReports((prev) => prev.map((r) => (r.folio === folio ? updated : r)));
     setFloatingAlertOrder(null);
 
-    // Sync to Supabase
-    try {
-      await supabase
-        .from('service_reports')
-        .update({
-          aceptada_por_tecnico: true,
-          fecha_aceptada: nowIso,
-        })
-        .eq('folio', folio);
-    } catch (err) {
-      console.log('Nota: Aceptación local registrada:', err);
-    }
+    // Sync to Supabase with schema resilience
+    await saveReportToSupabase(updated);
 
     // Mark corresponding notification as read
     setNotifications((prev) => {
@@ -946,10 +894,8 @@ export default function App() {
 
     setReports((prev) => prev.map((r) => (r.id === report.id ? updated : r)));
 
-    // Sync to Supabase
-    try {
-      await supabase.from('service_reports').update({ status: newStatus }).eq('id', report.id);
-    } catch {}
+    // Sync to Supabase with schema resilience
+    saveReportToSupabase(updated).catch(() => {});
 
     // If technician changed the status, notify Admin!
     if (currentRole === 'tecnico') {
@@ -1025,37 +971,10 @@ export default function App() {
     setIsFormOpen(false);
     setEditingReport(null);
 
-    // Sync to Supabase table service_reports
-    try {
-      await supabase.from('service_reports').upsert({
-        id: report.id,
-        report_code: report.reportCode || 'SOT-REP-CLG-01',
-        folio: report.folio,
-        tipo_servicio: report.tipoServicio || 'campo',
-        empresa: report.empresa,
-        fecha: report.fecha,
-        direccion: report.direccion || '',
-        telefono: report.telefono || '',
-        num_visita: report.numVisita || 1,
-        equipo: report.equipo || {},
-        danos: report.danos || {},
-        descripcion_danos: report.descripcionDanos || '',
-        prueba_cabezal_resultado: report.pruebaCabezalResultado || '',
-        prueba_cabezal_imagen: report.pruebaCabezalImagen || null,
-        evidencias_fotos: report.evidenciasFotos || [],
-        cliente_nombre: report.clienteNombre || '',
-        cliente_email: report.clienteEmail || '',
-        cliente_firma: report.clienteFirma || null,
-        tecnico_nombre: report.tecnicoNombre || '',
-        tecnico_firma: report.tecnicoFirma || null,
-        tecnico_id: report.tecnicoId || null,
-        aceptada_por_tecnico: report.aceptadaPorTecnico ?? false,
-        fecha_aceptada: report.fechaAceptada || null,
-        status: report.status || 'En Revisión',
-        observaciones_generales: report.observacionesGenerales || '',
-      });
-    } catch (err) {
-      console.log('Nota: Guardado local exitoso. En espera de script en Supabase:', err);
+    // Sync to Supabase table service_reports with adaptive schema handling
+    const supabaseRes = await saveReportToSupabase(report);
+    if (!supabaseRes.success) {
+      console.warn('Nota de sincronización Supabase:', supabaseRes.error);
     }
 
     const currentProfile = currentRole === 'tecnico' ? techProfile : adminProfile;
