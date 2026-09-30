@@ -170,13 +170,16 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     );
   };
 
-  const handleFillDemo = (user: 'haroldo' | 'carlos') => {
+  const handleFillDemo = (user: 'haroldo' | 'carlos' | 'mendoza') => {
     if (user === 'haroldo') {
       setIdentifier('haroldo90');
       setPassword('Chevropar#1970');
-    } else {
+    } else if (user === 'carlos') {
       setIdentifier('carlos_raya');
       setPassword('Sotex#Raya2024*9X');
+    } else {
+      setIdentifier('carlos_mendoza');
+      setPassword('Sotex#2024*C1');
     }
   };
 
@@ -265,14 +268,14 @@ export const LoginModal: React.FC<LoginModalProps> = ({
           {/* Quick fills for registered users */}
           <div className="pt-1">
             <p className="text-[11px] text-neutral-400 mb-2">Acceso rápido con credenciales:</p>
-            <div className="grid grid-cols-2 gap-2 text-[11px]">
+            <div className="grid grid-cols-3 gap-2 text-[11px]">
               <button
                 type="button"
                 onClick={() => handleFillDemo('haroldo')}
                 className="p-2 bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 rounded-lg text-left transition-colors cursor-pointer"
               >
-                <div className="font-bold text-red-400 flex items-center gap-1">
-                  <ShieldCheck className="w-3 h-3" /> Harold Anguiano
+                <div className="font-bold text-red-400 flex items-center gap-1 text-[11px]">
+                  <ShieldCheck className="w-3 h-3 shrink-0" /> Harold (Admin)
                 </div>
                 <div className="text-[10px] text-neutral-400 truncate">haroldo90</div>
               </button>
@@ -282,10 +285,21 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                 onClick={() => handleFillDemo('carlos')}
                 className="p-2 bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 rounded-lg text-left transition-colors cursor-pointer"
               >
-                <div className="font-bold text-red-400 flex items-center gap-1">
-                  <ShieldCheck className="w-3 h-3" /> Carlos Raya
+                <div className="font-bold text-red-400 flex items-center gap-1 text-[11px]">
+                  <ShieldCheck className="w-3 h-3 shrink-0" /> Carlos Raya
                 </div>
                 <div className="text-[10px] text-neutral-400 truncate">carlos_raya</div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleFillDemo('mendoza')}
+                className="p-2 bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 rounded-lg text-left transition-colors cursor-pointer"
+              >
+                <div className="font-bold text-amber-400 flex items-center gap-1 text-[11px]">
+                  <Wrench className="w-3 h-3 shrink-0" /> Mendoza (Téc)
+                </div>
+                <div className="text-[10px] text-neutral-400 truncate">carlos_mendoza</div>
               </button>
             </div>
           </div>
