@@ -70,6 +70,11 @@ export const Navbar: React.FC<NavbarProps> = ({
           title: 'Gestión de Empleados',
           code: 'SOT-EMP-01',
         };
+      case 'equipos':
+        return {
+          title: 'Catálogo de Equipos y Checklists',
+          code: 'SOT-EQ-01',
+        };
       case 'perfil':
         return {
           title: 'Perfil',

@@ -14,6 +14,7 @@ import {
   BookOpen,
   History,
   Bell,
+  ListChecks,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -209,6 +210,26 @@ export const Sidebar: React.FC<SidebarProps> = ({
               }`}
             />
             {!isCollapsed && <span>Empleados</span>}
+          </button>
+        )}
+
+        {/* 6. Module: Equipos & Checklists (ONLY FOR ADMIN ROLE) */}
+        {currentRole === 'admin' && (
+          <button
+            onClick={() => onSelectModule('equipos')}
+            title="Catálogo de Equipos y Checklists"
+            className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+              activeModule === 'equipos'
+                ? 'bg-[#D60000]/15 text-white border border-[#D60000]/30 shadow-xs'
+                : 'text-neutral-400 hover:text-white hover:bg-neutral-800/70'
+            } ${isCollapsed ? 'justify-center' : ''}`}
+          >
+            <ListChecks
+              className={`w-5 h-5 shrink-0 ${
+                activeModule === 'equipos' ? 'text-[#D60000]' : 'text-neutral-400'
+              }`}
+            />
+            {!isCollapsed && <span>Equipos</span>}
           </button>
         )}
 

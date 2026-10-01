@@ -98,6 +98,36 @@ export const normalizeSupabaseReportRow = (row: any): ServiceReport => {
     clienteNombre: row?.cliente_nombre || row?.clienteNombre || '',
     clienteEmail: row?.cliente_email || row?.clienteEmail || '',
     clienteFirma,
+    contactoNombre:
+      row?.contacto_nombre ||
+      row?.contactoNombre ||
+      meta?.contactoNombre ||
+      '',
+    serviciosRealizar: Array.isArray(row?.servicios_realizar)
+      ? row.servicios_realizar
+      : Array.isArray(row?.serviciosRealizar)
+      ? row.serviciosRealizar
+      : Array.isArray(meta?.serviciosRealizar)
+      ? meta.serviciosRealizar
+      : [],
+    tipoEquipoNombre:
+      row?.tipo_equipo_nombre ||
+      row?.tipoEquipoNombre ||
+      meta?.tipoEquipoNombre ||
+      '',
+    fotoAntes: row?.foto_antes || row?.fotoAntes || meta?.fotoAntes || undefined,
+    fotoDespues:
+      row?.foto_despues || row?.fotoDespues || meta?.fotoDespues || undefined,
+    danosDinamicos:
+      row?.danos_dinamicos ||
+      row?.danosDinamicos ||
+      meta?.danosDinamicos ||
+      {},
+    fechaAgenda:
+      row?.fecha_agenda ||
+      row?.fechaAgenda ||
+      meta?.fechaAgenda ||
+      undefined,
     tecnicoNombre: row?.tecnico_nombre || row?.tecnicoNombre || 'Tec. Carlos Mendoza',
     tecnicoFirma,
     tecnicoId,
@@ -137,6 +167,13 @@ export const saveReportToSupabase = async (
       tecnicoId: report.tecnicoId || null,
       clienteFirma: report.clienteFirma || null,
       tecnicoFirma: report.tecnicoFirma || null,
+      contactoNombre: report.contactoNombre || '',
+      serviciosRealizar: report.serviciosRealizar || [],
+      tipoEquipoNombre: report.tipoEquipoNombre || '',
+      fotoAntes: report.fotoAntes || null,
+      fotoDespues: report.fotoDespues || null,
+      danosDinamicos: report.danosDinamicos || {},
+      fechaAgenda: report.fechaAgenda || null,
       savedAt: new Date().toISOString(),
     },
   };
@@ -168,6 +205,13 @@ export const saveReportToSupabase = async (
     fecha_aceptada: report.fechaAceptada || null,
     status: report.status || 'En Revisión',
     observaciones_generales: report.observacionesGenerales || '',
+    contacto_nombre: report.contactoNombre || '',
+    servicios_realizar: report.serviciosRealizar || [],
+    tipo_equipo_nombre: report.tipoEquipoNombre || '',
+    foto_antes: report.fotoAntes || null,
+    foto_despues: report.fotoDespues || null,
+    danos_dinamicos: report.danosDinamicos || {},
+    fecha_agenda: report.fechaAgenda || null,
   };
 
   try {

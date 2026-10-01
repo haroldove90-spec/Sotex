@@ -80,17 +80,45 @@ CREATE TABLE IF NOT EXISTS public.service_reports (
     tecnico_id TEXT,
     aceptada_por_tecnico BOOLEAN DEFAULT false,
     fecha_aceptada TIMESTAMPTZ,
-    status TEXT NOT NULL DEFAULT 'En Revisión' CHECK (status IN ('En Revisión', 'Pendiente Refacción', 'Garantía', 'Completado')),
+    status TEXT NOT NULL DEFAULT 'En Revisión',
+    fecha_agenda DATE,
+    contacto_nombre TEXT DEFAULT '',
+    servicios_realizar JSONB DEFAULT '[]'::jsonb,
+    tipo_equipo_nombre TEXT DEFAULT '',
+    foto_antes TEXT,
+    foto_despues TEXT,
+    danos_dinamicos JSONB DEFAULT '{}'::jsonb,
     observaciones_generales TEXT DEFAULT '',
     created_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
 
--- Si la tabla ya existía, agregar columnas nuevas de forma idempotente:
+-- Si la tabla ya existía, agregar columnas nuevas y actualizar check de estatus de forma idempotente:
+ALTER TABLE public.service_reports DROP CONSTRAINT IF EXISTS service_reports_status_check;
+ALTER TABLE public.service_reports ADD CONSTRAINT service_reports_status_check CHECK (status IN ('Agendado', 'En Revisión', 'Pendiente Refacción', 'Garantía', 'Completado'));
 ALTER TABLE public.service_reports ADD COLUMN IF NOT EXISTS tipo_servicio TEXT DEFAULT 'campo';
 ALTER TABLE public.service_reports ADD COLUMN IF NOT EXISTS evidencias_fotos JSONB DEFAULT '[]'::jsonb;
 ALTER TABLE public.service_reports ADD COLUMN IF NOT EXISTS aceptada_por_tecnico BOOLEAN DEFAULT false;
 ALTER TABLE public.service_reports ADD COLUMN IF NOT EXISTS fecha_aceptada TIMESTAMPTZ;
 ALTER TABLE public.service_reports ADD COLUMN IF NOT EXISTS tecnico_id TEXT;
+ALTER TABLE public.service_reports ADD COLUMN IF NOT EXISTS fecha_agenda DATE;
+ALTER TABLE public.service_reports ADD COLUMN IF NOT EXISTS contacto_nombre TEXT DEFAULT '';
+ALTER TABLE public.service_reports ADD COLUMN IF NOT EXISTS servicios_realizar JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE public.service_reports ADD COLUMN IF NOT EXISTS tipo_equipo_nombre TEXT DEFAULT '';
+ALTER TABLE public.service_reports ADD COLUMN IF NOT EXISTS foto_antes TEXT;
+ALTER TABLE public.service_reports ADD COLUMN IF NOT EXISTS foto_despues TEXT;
+ALTER TABLE public.service_reports ADD COLUMN IF NOT EXISTS danos_dinamicos JSONB DEFAULT '{}'::jsonb;
+
+-- Tabla para catálogo dinámico de equipos y checklists:
+CREATE TABLE IF NOT EXISTS public.configuracion_equipos (
+    id TEXT PRIMARY KEY,
+    nombre TEXT NOT NULL,
+    descripcion TEXT DEFAULT '',
+    checklists JSONB DEFAULT '[]'::jsonb,
+    updated_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
+);
+ALTER TABLE public.configuracion_equipos ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Permitir todo en configuracion_equipos" ON public.configuracion_equipos;
+CREATE POLICY "Permitir todo en configuracion_equipos" ON public.configuracion_equipos FOR ALL USING (true) WITH CHECK (true);
 
 -- Habilitar RLS en reportes con permisos totales (SELECT, INSERT, UPDATE, DELETE)
 ALTER TABLE public.service_reports ENABLE ROW LEVEL SECURITY;

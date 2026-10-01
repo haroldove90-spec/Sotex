@@ -138,11 +138,30 @@ export const ReportDetailModal: React.FC<ReportDetailModalProps> = ({
           <div className="bg-white text-slate-900 w-full max-w-[800px] p-6 sm:p-10 shadow-lg border border-slate-300 font-sans relative rounded-lg">
             {/* Acceptance and Status Header Badge */}
             <div className="flex items-center justify-between flex-wrap gap-2 mb-3 bg-slate-50 p-2.5 rounded-lg border border-slate-200">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-xs font-bold text-slate-600">Estado:</span>
-                <span className="font-bold text-xs px-2.5 py-0.5 rounded-full bg-slate-200 text-slate-800">
+                <span
+                  className={`font-bold text-xs px-2.5 py-0.5 rounded-full ${
+                    report.status === 'Agendado'
+                      ? 'bg-purple-100 text-purple-800 border border-purple-300'
+                      : report.status === 'En Revisión'
+                      ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                      : report.status === 'Pendiente Refacción'
+                      ? 'bg-rose-100 text-rose-800 border border-rose-300'
+                      : report.status === 'Garantía'
+                      ? 'bg-blue-100 text-blue-800 border border-blue-300'
+                      : 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                  }`}
+                >
                   {report.status}
                 </span>
+
+                {report.status === 'Agendado' && report.fechaAgenda && (
+                  <span className="text-[11px] font-bold text-purple-800 bg-purple-50 px-2 py-0.5 rounded border border-purple-200">
+                    Fecha agendada: {report.fechaAgenda}
+                  </span>
+                )}
+
                 {report.tipoServicio === 'sotex' ? (
                   <span className="text-[11px] font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
                     Servicio en Taller SOTEX
@@ -215,6 +234,22 @@ export const ReportDetailModal: React.FC<ReportDetailModalProps> = ({
                 </div>
               </div>
 
+              {/* Contacto y Correo */}
+              <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center">
+                <div className="sm:col-span-6 flex items-baseline">
+                  <span className="font-bold text-slate-800 w-20">Contacto:</span>
+                  <span className="flex-1 border-b border-slate-400 font-medium text-slate-900 pb-0.5 px-2">
+                    {report.contactoNombre || report.clienteNombre || '-'}
+                  </span>
+                </div>
+                <div className="sm:col-span-6 flex items-baseline">
+                  <span className="font-bold text-slate-800 w-20">Correo:</span>
+                  <span className="flex-1 border-b border-slate-400 font-medium text-slate-900 pb-0.5 px-2 truncate">
+                    {report.clienteEmail || '-'}
+                  </span>
+                </div>
+              </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center">
                 <div className="sm:col-span-8 flex items-baseline">
                   <span className="font-bold text-slate-800 w-20">Dirección:</span>
@@ -228,6 +263,36 @@ export const ReportDetailModal: React.FC<ReportDetailModalProps> = ({
                     {report.telefono || '-'}
                   </span>
                 </div>
+              </div>
+
+              {/* Servicios a realizar & Tipo de equipo rápido */}
+              <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center pt-0.5">
+                <div className="sm:col-span-7 flex items-center gap-2">
+                  <span className="font-bold text-slate-800">Servicio a realizar:</span>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {report.serviciosRealizar && report.serviciosRealizar.length > 0 ? (
+                      report.serviciosRealizar.map((srv) => (
+                        <span
+                          key={srv}
+                          className="px-2 py-0.5 rounded bg-neutral-900 text-white font-bold text-[10px]"
+                        >
+                          {srv}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="text-slate-500 italic text-[11px]">Diagnóstico general</span>
+                    )}
+                  </div>
+                </div>
+
+                {report.tipoEquipoNombre && (
+                  <div className="sm:col-span-5 flex items-baseline">
+                    <span className="font-bold text-slate-800 w-28">Tipo de equipo:</span>
+                    <span className="flex-1 border-b border-slate-400 font-semibold text-slate-900 pb-0.5 px-1 truncate">
+                      {report.tipoEquipoNombre}
+                    </span>
+                  </div>
+                )}
               </div>
 
               {/* Num. de visita */}
@@ -350,12 +415,80 @@ export const ReportDetailModal: React.FC<ReportDetailModalProps> = ({
                   </div>
                 </div>
               </div>
+
+              {/* Dynamic Checklist Anomalies if present */}
+              {report.danosDinamicos &&
+                Object.entries(report.danosDinamicos).some(([, val]) => Boolean(val)) && (
+                  <div className="p-3 bg-red-50/40 border-t border-slate-200">
+                    <span className="text-[11px] font-bold text-red-900 uppercase tracking-wider block mb-1.5">
+                      Fallas detectadas según checklist dinámico:
+                    </span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {Object.entries(report.danosDinamicos)
+                        .filter(([, val]) => Boolean(val))
+                        .map(([itemKey]) => (
+                          <span
+                            key={itemKey}
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-red-100 border border-red-200 text-red-800 text-[10px] font-bold"
+                          >
+                            <span className="w-1.5 h-1.5 rounded-full bg-red-600" />
+                            {itemKey}
+                          </span>
+                        ))}
+                    </div>
+                  </div>
+                )}
             </div>
+
+            {/* Fotos "Antes" y "Después" del servicio */}
+            {(report.fotoAntes || report.fotoDespues) && (
+              <div className="mt-4 border border-slate-900">
+                <div className="bg-slate-900 text-white text-xs font-bold text-center py-1 flex items-center justify-center gap-1.5">
+                  <Camera className="w-3.5 h-3.5" />
+                  Evidencia Comparativa: Estado Inicial (Antes) y Final (Después)
+                </div>
+                <div className="p-4 bg-slate-50 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Foto Antes */}
+                  <div className="border border-slate-200 bg-white rounded-lg p-2.5 flex flex-col items-center">
+                    <span className="text-xs font-bold text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded mb-2">
+                      Foto "Antes" (Recepción)
+                    </span>
+                    {report.fotoAntes ? (
+                      <img
+                        src={report.fotoAntes}
+                        alt="Foto Antes"
+                        onClick={() => setSelectedImageModal(report.fotoAntes!)}
+                        className="max-h-48 object-contain rounded border border-slate-200 cursor-pointer hover:opacity-90 transition-opacity"
+                      />
+                    ) : (
+                      <span className="text-[11px] text-slate-400 py-6">Sin foto inicial registrada</span>
+                    )}
+                  </div>
+
+                  {/* Foto Después */}
+                  <div className="border border-slate-200 bg-white rounded-lg p-2.5 flex flex-col items-center">
+                    <span className="text-xs font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded mb-2">
+                      Foto "Después" (Servicio Concluido)
+                    </span>
+                    {report.fotoDespues ? (
+                      <img
+                        src={report.fotoDespues}
+                        alt="Foto Después"
+                        onClick={() => setSelectedImageModal(report.fotoDespues!)}
+                        className="max-h-48 object-contain rounded border border-slate-200 cursor-pointer hover:opacity-90 transition-opacity"
+                      />
+                    ) : (
+                      <span className="text-[11px] text-slate-400 py-6">Sin foto final registrada</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Prueba de impresión del cabezal */}
             <div className="mt-4 border border-slate-900">
               <div className="bg-slate-900 text-white text-xs font-bold text-center py-1">
-                Prueba de impresión del cabezal térmico
+                Prueba de impresión del cabezal térmico / Calidad
               </div>
 
               <div className="p-4 bg-white min-h-[120px] flex flex-col items-center justify-center">
@@ -409,7 +542,7 @@ export const ReportDetailModal: React.FC<ReportDetailModalProps> = ({
             {/* Footer Contact URLs */}
             <div className="mt-6 flex items-center justify-between text-xs text-neutral-700 font-medium px-2">
               <span>www.sotex.com.mx</span>
-              <span>soporteqdl@sotex.com.mx</span>
+              <span>soporte.gdl@sotex.com.mx</span>
             </div>
 
             {/* Signatures */}

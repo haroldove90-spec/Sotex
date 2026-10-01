@@ -14,7 +14,14 @@ import {
   FolioConfig,
   SystemNotification,
   ServiceStatus,
+  EquipmentTypeConfig,
 } from './types';
+import { EquipmentTypesAdminView } from './components/EquipmentTypesAdminView';
+import {
+  loadEquipmentTypes,
+  saveEquipmentTypes,
+  syncEquipmentTypesWithSupabase,
+} from './utils/equipmentTypesManager';
 import { INITIAL_REPORTS } from './data/mockReports';
 import { INITIAL_EMPLOYEES } from './data/mockEmployees';
 import { RoleHomeView } from './components/RoleHomeView';
@@ -265,6 +272,19 @@ export default function App() {
   // Folio Configuration & Consecutives State
   const [folioConfig, setFolioConfig] = useState<FolioConfig>(() => loadFolioConfig());
   const [isFolioConfigOpen, setIsFolioConfigOpen] = useState(false);
+
+  // Dynamic Equipment Types and Checklists State
+  const [equipmentTypes, setEquipmentTypes] = useState<EquipmentTypeConfig[]>(() =>
+    loadEquipmentTypes()
+  );
+
+  useEffect(() => {
+    syncEquipmentTypesWithSupabase().then((types) => {
+      if (types && types.length > 0) {
+        setEquipmentTypes(types);
+      }
+    });
+  }, []);
 
   // Real-time Notifications state
   const [notifications, setNotifications] = useState<SystemNotification[]>(() =>
@@ -1704,6 +1724,18 @@ export default function App() {
             />
           )}
 
+          {/* Module 4: Catálogo de Equipos y Checklists Dinámicos (Admin Role Only) */}
+          {activeModule === 'equipos' && currentRole === 'admin' && (
+            <EquipmentTypesAdminView
+              equipmentTypes={equipmentTypes}
+              onUpdateEquipmentTypes={(newTypes) => {
+                setEquipmentTypes(newTypes);
+                saveEquipmentTypes(newTypes);
+              }}
+              onOpenNewReport={handleOpenNewReport}
+            />
+          )}
+
           {/* Module 4: Perfil */}
           {activeModule === 'perfil' && (
             <AdminProfileView
@@ -1788,6 +1820,7 @@ export default function App() {
         currentUserName={currentUser?.nombre || currentProfile.nombre}
         techniciansList={techniciansList}
         folioConfig={folioConfig}
+        equipmentTypes={equipmentTypes}
       />
 
       {/* Detail Modal (Printable Sheet View) */}

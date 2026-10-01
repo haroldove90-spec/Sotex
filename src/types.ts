@@ -1,15 +1,30 @@
 export type VisitNumber = 1 | 2 | 3 | 4;
 
-export type ServiceStatus = 'En Revisión' | 'Pendiente Refacción' | 'Garantía' | 'Completado';
+export type ServiceStatus =
+  | 'Agendado'
+  | 'En Revisión'
+  | 'Pendiente Refacción'
+  | 'Garantía'
+  | 'Completado';
 
 export const SERVICE_STATUS_ORDER: ServiceStatus[] = [
+  'Agendado',
   'En Revisión',
   'Pendiente Refacción',
   'Garantía',
   'Completado',
 ];
 
+export type ServiceTaskType = 'Diagnóstico' | 'Mantenimiento' | 'Reparación';
+
 export type ServiceLocation = 'campo' | 'sotex';
+
+export interface EquipmentTypeConfig {
+  id: string;
+  nombre: string;
+  descripcion?: string;
+  checklists: string[];
+}
 
 export interface DamagedComponents {
   cabezal: boolean;
@@ -51,18 +66,28 @@ export interface ServiceReport {
   danos: DamagedComponents;
   descripcionDanos: string;
   
-  // Printhead test
-  pruebaCabezalImagen?: string; // Base64 data or image URL
-  pruebaCabezalResultado?: string; // e.g. "Cabezal 100% OK", "Puntos muertos detectados"
-  
-  // Multiple photographic evidence
-  evidenciasFotos?: string[];
-  
+  // Dynamic checklist results per equipment type
+  danosDinamicos?: Record<string, boolean>;
+
   // Client sign-off
   clienteNombre: string;
   clienteEmail: string;
   clienteFirma?: string; // Data URL
   
+  // Extended Client & Visit fields
+  contactoNombre?: string; // Persona de contacto para coordinar
+  serviciosRealizar?: ServiceTaskType[]; // Diagnóstico, Mantenimiento, Reparación
+  tipoEquipoNombre?: string; // Nombre o categoría rápida de equipo
+
+  // Photographic evidences (Before & After & Printhead)
+  fotoAntes?: string; // Foto inicial al recibir el equipo
+  fotoDespues?: string; // Foto posterior al servicio realizado
+  pruebaCabezalImagen?: string; // Base64 data or image URL
+  pruebaCabezalResultado?: string; // e.g. "Cabezal 100% OK", "Puntos muertos detectados"
+  
+  // Multiple photographic evidence gallery
+  evidenciasFotos?: string[];
+
   // Technician / Engineer sign-off
   tecnicoNombre: string;
   tecnicoFirma?: string; // Data URL
@@ -72,8 +97,9 @@ export interface ServiceReport {
   aceptadaPorTecnico?: boolean;
   fechaAceptada?: string;
   
-  // Additional dashboard tracking
+  // Additional dashboard tracking & Scheduling
   status: ServiceStatus;
+  fechaAgenda?: string; // Fecha de agenda cuando el estatus es 'Agendado' (cupo lleno / programado)
   observacionesGenerales?: string;
   createdAt: string;
 }
@@ -86,6 +112,7 @@ export type ActiveModule =
   | 'historial'
   | 'notificaciones'
   | 'empleados'
+  | 'equipos'
   | 'perfil'
   | 'manual';
 

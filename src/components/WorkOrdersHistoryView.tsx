@@ -134,6 +134,7 @@ export const WorkOrdersHistoryView: React.FC<WorkOrdersHistoryViewProps> = ({
   const metrics = useMemo(() => {
     return {
       total: baseReports.length,
+      agendadas: baseReports.filter((r) => r.status === 'Agendado').length,
       enRevision: baseReports.filter((r) => r.status === 'En Revisión').length,
       completadas: baseReports.filter((r) => r.status === 'Completado').length,
       pendientes: baseReports.filter((r) => r.status === 'Pendiente Refacción').length,
@@ -149,6 +150,13 @@ export const WorkOrdersHistoryView: React.FC<WorkOrdersHistoryViewProps> = ({
 
   const getStatusBadge = (status: ServiceStatus) => {
     switch (status) {
+      case 'Agendado':
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-purple-100 text-purple-800 border border-purple-300">
+            <Calendar className="w-3 h-3 text-purple-600" />
+            Agendado
+          </span>
+        );
       case 'En Revisión':
         return (
           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-300">
@@ -214,10 +222,17 @@ export const WorkOrdersHistoryView: React.FC<WorkOrdersHistoryViewProps> = ({
       </div>
 
       {/* Quick Summary Pill Counters */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2.5 text-xs">
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2.5 text-xs">
         <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs">
           <span className="text-[11px] text-slate-500 block font-medium">Total Órdenes</span>
           <span className="text-lg font-black text-slate-800">{metrics.total}</span>
+        </div>
+
+        <div className="bg-white p-3 rounded-xl border border-purple-200 bg-purple-50/50 shadow-2xs">
+          <span className="text-[11px] text-purple-700 block font-medium flex items-center gap-1">
+            <Calendar className="w-3 h-3 text-purple-600" /> Agendadas
+          </span>
+          <span className="text-lg font-black text-purple-900">{metrics.agendadas}</span>
         </div>
 
         <div className="bg-white p-3 rounded-xl border border-amber-200 bg-amber-50/40 shadow-2xs">
@@ -234,11 +249,11 @@ export const WorkOrdersHistoryView: React.FC<WorkOrdersHistoryViewProps> = ({
           <span className="text-lg font-black text-rose-800">{metrics.pendientes}</span>
         </div>
 
-        <div className="bg-white p-3 rounded-xl border border-purple-200 bg-purple-50/40 shadow-2xs">
-          <span className="text-[11px] text-purple-700 block font-medium flex items-center gap-1">
-            <AlertTriangle className="w-3 h-3 text-purple-600" /> 3. Garantía
+        <div className="bg-white p-3 rounded-xl border border-blue-200 bg-blue-50/40 shadow-2xs">
+          <span className="text-[11px] text-blue-700 block font-medium flex items-center gap-1">
+            <AlertTriangle className="w-3 h-3 text-blue-600" /> 3. Garantía
           </span>
-          <span className="text-lg font-black text-purple-800">{metrics.garantia}</span>
+          <span className="text-lg font-black text-blue-800">{metrics.garantia}</span>
         </div>
 
         <div className="bg-white p-3 rounded-xl border border-emerald-200 bg-emerald-50/40 shadow-2xs">
@@ -246,13 +261,6 @@ export const WorkOrdersHistoryView: React.FC<WorkOrdersHistoryViewProps> = ({
             <CheckCircle2 className="w-3 h-3 text-emerald-600" /> 4. Completadas
           </span>
           <span className="text-lg font-black text-emerald-800">{metrics.completadas}</span>
-        </div>
-
-        <div className="bg-white p-3 rounded-xl border border-blue-200 bg-blue-50/40 shadow-2xs">
-          <span className="text-[11px] text-blue-700 block font-medium flex items-center gap-1">
-            <MapPin className="w-3 h-3 text-blue-600" /> En Campo
-          </span>
-          <span className="text-lg font-black text-blue-800">{metrics.enCampo}</span>
         </div>
 
         <div className="bg-white p-3 rounded-xl border border-indigo-200 bg-indigo-50/40 shadow-2xs">
@@ -288,6 +296,7 @@ export const WorkOrdersHistoryView: React.FC<WorkOrdersHistoryViewProps> = ({
               className="bg-transparent font-medium text-slate-800 focus:outline-hidden cursor-pointer"
             >
               <option value="ALL">Todos los estatus</option>
+              <option value="Agendado">📅 Agendado</option>
               <option value="En Revisión">1. En Revisión</option>
               <option value="Pendiente Refacción">2. Pendiente Refacción</option>
               <option value="Garantía">3. Garantía</option>
@@ -417,8 +426,8 @@ export const WorkOrdersHistoryView: React.FC<WorkOrdersHistoryViewProps> = ({
                         <div className="font-bold text-slate-800 line-clamp-1">
                           {report.empresa}
                         </div>
-                        <div className="text-[11px] text-slate-400 line-clamp-1">
-                          {report.clienteNombre || 'Contacto en sitio'}
+                        <div className="text-[11px] text-slate-500 line-clamp-1">
+                          {report.contactoNombre ? `Contacto: ${report.contactoNombre}` : report.clienteNombre || 'Contacto en sitio'}
                         </div>
                       </td>
 
@@ -457,7 +466,14 @@ export const WorkOrdersHistoryView: React.FC<WorkOrdersHistoryViewProps> = ({
 
                       {/* Estatus */}
                       <td className="py-3 px-4 whitespace-nowrap">
-                        {getStatusBadge(report.status)}
+                        <div className="flex flex-col gap-1 items-start">
+                          {getStatusBadge(report.status)}
+                          {report.status === 'Agendado' && report.fechaAgenda && (
+                            <span className="text-[10px] font-bold text-purple-700 bg-purple-50 px-2 py-0.5 rounded border border-purple-200">
+                              📅 Para: {report.fechaAgenda}
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       {/* Aceptada status */}

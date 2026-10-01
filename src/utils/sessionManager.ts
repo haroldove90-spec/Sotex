@@ -11,6 +11,7 @@ const VALID_MODULES: ActiveModule[] = [
   'historial',
   'notificaciones',
   'empleados',
+  'equipos',
   'perfil',
   'manual',
 ];

@@ -331,7 +331,7 @@ export function generateServiceReportPDF(report: ServiceReport, autoDownload = t
   doc.setFontSize(8.5);
   doc.setTextColor(0, 80, 180);
   doc.text('www.sotex.com.mx', margin + 8, currentY);
-  doc.text('soporteqdl@sotex.com.mx', pageWidth - margin - 8, currentY, { align: 'right' });
+  doc.text('soporte.gdl@sotex.com.mx', pageWidth - margin - 8, currentY, { align: 'right' });
 
   currentY += 16;
 
@@ -780,7 +780,7 @@ function renderSinglePageOnDoc(doc: jsPDF, report: ServiceReport) {
   doc.setFontSize(8.5);
   doc.setTextColor(0, 80, 180);
   doc.text('www.sotex.com.mx', margin + 8, currentY);
-  doc.text('soporteqdl@sotex.com.mx', pageWidth - margin - 8, currentY, { align: 'right' });
+  doc.text('soporte.gdl@sotex.com.mx', pageWidth - margin - 8, currentY, { align: 'right' });
 
   currentY += 16;
 

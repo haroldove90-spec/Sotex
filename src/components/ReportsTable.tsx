@@ -125,6 +125,8 @@ export const ReportsTable: React.FC<ReportsTableProps> = ({
 
   const getStatusBadgeClass = (status: string) => {
     switch (status) {
+      case 'Agendado':
+        return 'bg-purple-100 text-purple-800 border-purple-300 font-bold';
       case 'En Revisión':
         return 'bg-amber-50 text-amber-800 border-amber-300';
       case 'Completado':
@@ -132,7 +134,7 @@ export const ReportsTable: React.FC<ReportsTableProps> = ({
       case 'Pendiente Refacción':
         return 'bg-rose-50 text-rose-700 border-rose-200';
       case 'Garantía':
-        return 'bg-purple-50 text-purple-700 border-purple-200';
+        return 'bg-blue-50 text-blue-700 border-blue-200';
       default:
         return 'bg-slate-50 text-slate-700 border-slate-200';
     }
@@ -182,6 +184,7 @@ export const ReportsTable: React.FC<ReportsTableProps> = ({
                 className="text-xs bg-transparent font-medium text-slate-800 focus:outline-hidden cursor-pointer"
               >
                 <option value="ALL">Todos los Estados</option>
+                <option value="Agendado">📅 Agendado</option>
                 <option value="En Revisión">1. En Revisión</option>
                 <option value="Pendiente Refacción">2. Pendiente Refacción</option>
                 <option value="Garantía">3. Garantía</option>
@@ -345,6 +348,11 @@ export const ReportsTable: React.FC<ReportsTableProps> = ({
                       <div className="font-bold text-slate-900 truncate max-w-[200px]">
                         {rep.empresa}
                       </div>
+                      {rep.contactoNombre && (
+                        <div className="text-[11px] font-semibold text-slate-700 truncate max-w-[220px]">
+                          Contacto: {rep.contactoNombre}
+                        </div>
+                      )}
                       <div className="text-[11px] text-slate-500 truncate max-w-[220px]">
                         {rep.direccion || rep.telefono || 'Sin dirección registrada'}
                       </div>
@@ -405,6 +413,11 @@ export const ReportsTable: React.FC<ReportsTableProps> = ({
                         >
                           {rep.status}
                         </span>
+                        {rep.status === 'Agendado' && rep.fechaAgenda && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-bold bg-purple-50 text-purple-700 border border-purple-200">
+                            📅 Para: {rep.fechaAgenda}
+                          </span>
+                        )}
                         {rep.tipoServicio && (
                           <span
                             className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-semibold border ${
