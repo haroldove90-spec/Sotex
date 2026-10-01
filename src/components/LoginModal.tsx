@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { UserRole, Employee } from '../types';
-import { supabase, SUPABASE_SETUP_SQL } from '../utils/supabaseClient';
+import { supabase } from '../utils/supabaseClient';
+import { SupabaseSqlModal } from './SupabaseSqlModal';
 import {
   Eye,
   EyeOff,
@@ -37,15 +38,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [showSqlModal, setShowSqlModal] = useState(false);
-  const [copiedSql, setCopiedSql] = useState(false);
 
   if (!isOpen) return null;
-
-  const handleCopySql = () => {
-    navigator.clipboard.writeText(SUPABASE_SETUP_SQL);
-    setCopiedSql(true);
-    setTimeout(() => setCopiedSql(false), 3000);
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -337,57 +331,10 @@ export const LoginModal: React.FC<LoginModalProps> = ({
         </form>
 
         {/* Modal: View SQL for Supabase */}
-        {showSqlModal && (
-          <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
-            <div className="bg-[#1a1a1a] rounded-2xl max-w-2xl w-full border border-neutral-700 max-h-[85vh] flex flex-col overflow-hidden shadow-2xl">
-              <div className="p-4 bg-[#111111] border-b border-neutral-800 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Database className="w-5 h-5 text-emerald-400" />
-                  <div>
-                    <h4 className="font-bold text-sm text-white">
-                      Script SQL para Supabase (znlhwxjiwrwcfhswppfx)
-                    </h4>
-                    <p className="text-[11px] text-neutral-400">
-                      Copia y ejecuta este código en Supabase &gt; SQL Editor
-                    </p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => setShowSqlModal(false)}
-                  className="text-neutral-400 hover:text-white p-1 rounded-lg cursor-pointer"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              <div className="p-4 flex-1 overflow-auto bg-neutral-950 font-mono text-xs text-emerald-300 select-all">
-                <pre className="whitespace-pre-wrap">{SUPABASE_SETUP_SQL}</pre>
-              </div>
-
-              <div className="p-4 bg-[#111111] border-t border-neutral-800 flex items-center justify-between">
-                <span className="text-xs text-neutral-400">
-                  Incluye creación de tablas, políticas y las 2 credenciales de Harold y Carlos.
-                </span>
-                <button
-                  onClick={handleCopySql}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg shadow-sm cursor-pointer"
-                >
-                  {copiedSql ? (
-                    <>
-                      <Check className="w-4 h-4" />
-                      <span>¡Copiado al portapapeles!</span>
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="w-4 h-4" />
-                      <span>Copiar SQL</span>
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+        <SupabaseSqlModal
+          isOpen={showSqlModal}
+          onClose={() => setShowSqlModal(false)}
+        />
       </div>
     </div>
   );

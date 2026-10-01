@@ -154,6 +154,10 @@ export const upsertEquipmentTypeToSupabase = async (
     });
 
     if (error) {
+      if (error.code === 'PGRST205') {
+        // Table not created yet; gracefully saved locally
+        return true;
+      }
       console.warn('Nota al guardar tipo de equipo en Supabase:', error);
       return false;
     }

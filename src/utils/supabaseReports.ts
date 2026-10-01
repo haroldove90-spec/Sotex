@@ -133,7 +133,7 @@ export const normalizeSupabaseReportRow = (row: any): ServiceReport => {
     tecnicoId,
     aceptadaPorTecnico,
     fechaAceptada,
-    status: (row?.status || 'En Revisión') as ServiceStatus,
+    status: ((meta?.realStatus || meta?.status || row?.status || 'En Revisión') as ServiceStatus),
     observacionesGenerales:
       row?.observaciones_generales || row?.observacionesGenerales || '',
     createdAt: row?.created_at || row?.createdAt || new Date().toISOString(),
@@ -215,6 +215,7 @@ export const saveReportToSupabase = async (
   };
 
   try {
+    // Attempt 1: Full upsert with all top-level columns
     const { error: fullError } = await supabase
       .from('service_reports')
       .upsert(fullPayload);
@@ -223,57 +224,134 @@ export const saveReportToSupabase = async (
       return { success: true, mode: 'full' };
     }
 
-    // If error is about a missing column (PGRST204), try fallback with base columns
-    const isColumnError =
-      fullError.code === 'PGRST204' ||
-      fullError.message?.toLowerCase().includes('column') ||
-      fullError.message?.toLowerCase().includes('schema cache');
-
-    if (isColumnError) {
-      console.warn(
-        'Supabase: Columnas avanzadas no detectadas en BD remota. Usando modo de compatibilidad JSONB:',
-        fullError.message
+    const isCheckConstraintError = (err: any) =>
+      Boolean(
+        err &&
+        (err.code === '23514' ||
+         err.message?.toLowerCase().includes('check constraint') ||
+         err.message?.toLowerCase().includes('status_check') ||
+         err.message?.toLowerCase().includes('violates check constraint'))
       );
 
-      const basePayload = {
-        id: report.id,
-        report_code: report.reportCode || 'SOT-REP-CLG-01',
-        folio: report.folio,
-        empresa: report.empresa,
-        fecha: report.fecha,
-        direccion: report.direccion || '',
-        telefono: report.telefono || '',
-        num_visita: report.numVisita || 1,
-        equipo: equipoWithMeta,
-        danos: report.danos || {},
-        descripcion_danos: report.descripcionDanos || '',
-        prueba_cabezal_resultado: report.pruebaCabezalResultado || '',
-        prueba_cabezal_imagen: report.pruebaCabezalImagen || null,
-        cliente_nombre: report.clienteNombre || '',
-        cliente_email: report.clienteEmail || '',
-        cliente_firma: report.clienteFirma || null,
-        tecnico_nombre: report.tecnicoNombre || '',
-        tecnico_firma: report.tecnicoFirma || null,
-        status: report.status || 'En Revisión',
-        observaciones_generales: report.observacionesGenerales || '',
+    const isColumnError = (err: any) =>
+      Boolean(
+        err &&
+        (err.code === 'PGRST204' ||
+         err.message?.toLowerCase().includes('column') ||
+         err.message?.toLowerCase().includes('schema cache'))
+      );
+
+    // If check constraint failed on full payload (e.g. status 'Agendado' not in remote check constraint yet)
+    if (isCheckConstraintError(fullError)) {
+      console.warn(
+        'Supabase: Estatus no admitido por constraint remota (ej. Agendado). Usando compatibilidad con _sotex_meta:',
+        fullError.message
+      );
+      const fullStatusCompatPayload = {
+        ...fullPayload,
+        status: 'En Revisión',
       };
-
-      const { error: baseError } = await supabase
+      const { error: fullStatusError } = await supabase
         .from('service_reports')
-        .upsert(basePayload);
+        .upsert(fullStatusCompatPayload);
 
-      if (!baseError) {
+      if (!fullStatusError) {
         return { success: true, mode: 'fallback_jsonb' };
       }
-
-      console.error('Error al guardar en Supabase (modo compatibilidad):', baseError);
-      return { success: false, mode: 'fallback_jsonb', error: baseError.message };
     }
 
-    console.error('Error al guardar en Supabase:', fullError);
-    return { success: false, mode: 'full', error: fullError.message };
+    // Attempt 2: Base payload without newly added columns, preserving full state in JSONB equipo._sotex_meta
+    const basePayload = {
+      id: report.id,
+      report_code: report.reportCode || 'SOT-REP-CLG-01',
+      folio: report.folio,
+      tipo_servicio: report.tipoServicio || 'campo',
+      empresa: report.empresa,
+      fecha: report.fecha,
+      direccion: report.direccion || '',
+      telefono: report.telefono || '',
+      num_visita: report.numVisita || 1,
+      equipo: equipoWithMeta,
+      danos: report.danos || {},
+      descripcion_danos: report.descripcionDanos || '',
+      prueba_cabezal_resultado: report.pruebaCabezalResultado || '',
+      prueba_cabezal_imagen: report.pruebaCabezalImagen || null,
+      evidencias_fotos: report.evidenciasFotos || [],
+      cliente_nombre: report.clienteNombre || '',
+      cliente_email: report.clienteEmail || '',
+      cliente_firma: report.clienteFirma || null,
+      tecnico_nombre: report.tecnicoNombre || '',
+      tecnico_firma: report.tecnicoFirma || null,
+      tecnico_id: report.tecnicoId || null,
+      aceptada_por_tecnico: Boolean(report.aceptadaPorTecnico),
+      fecha_aceptada: report.fechaAceptada || null,
+      status: report.status || 'En Revisión',
+      observaciones_generales: report.observacionesGenerales || '',
+    };
+
+    const { error: baseError } = await supabase
+      .from('service_reports')
+      .upsert(basePayload);
+
+    if (!baseError) {
+      return { success: true, mode: 'fallback_jsonb' };
+    }
+
+    // If basePayload failed due to status check constraint
+    if (isCheckConstraintError(baseError)) {
+      console.warn(
+        'Supabase: Reintentando payload base con estatus compatible En Revisión:',
+        baseError.message
+      );
+      const baseStatusCompatPayload = {
+        ...basePayload,
+        status: 'En Revisión',
+      };
+      const { error: baseStatusError } = await supabase
+        .from('service_reports')
+        .upsert(baseStatusCompatPayload);
+
+      if (!baseStatusError) {
+        return { success: true, mode: 'fallback_jsonb' };
+      }
+    }
+
+    // Attempt 3: Ultra-compatible payload for earliest schema versions
+    const ultraBasePayload = {
+      id: report.id,
+      report_code: report.reportCode || 'SOT-REP-CLG-01',
+      folio: report.folio,
+      empresa: report.empresa,
+      fecha: report.fecha,
+      direccion: report.direccion || '',
+      telefono: report.telefono || '',
+      num_visita: report.numVisita || 1,
+      equipo: equipoWithMeta,
+      danos: report.danos || {},
+      descripcion_danos: report.descripcionDanos || '',
+      prueba_cabezal_resultado: report.pruebaCabezalResultado || '',
+      prueba_cabezal_imagen: report.pruebaCabezalImagen || null,
+      cliente_nombre: report.clienteNombre || '',
+      cliente_email: report.clienteEmail || '',
+      cliente_firma: report.clienteFirma || null,
+      tecnico_nombre: report.tecnicoNombre || '',
+      tecnico_firma: report.tecnicoFirma || null,
+      status: 'En Revisión',
+      observaciones_generales: report.observacionesGenerales || '',
+    };
+
+    const { error: ultraError } = await supabase
+      .from('service_reports')
+      .upsert(ultraBasePayload);
+
+    if (!ultraError) {
+      return { success: true, mode: 'fallback_jsonb' };
+    }
+
+    console.warn('Nota al sincronizar reporte en Supabase:', ultraError.message);
+    return { success: false, mode: 'fallback_jsonb', error: ultraError.message };
   } catch (err: any) {
-    console.error('Excepción de red al conectar con Supabase:', err);
+    console.warn('Excepción al conectar con Supabase:', err);
     return { success: false, mode: 'full', error: err?.message || 'Error de conexión' };
   }
 };

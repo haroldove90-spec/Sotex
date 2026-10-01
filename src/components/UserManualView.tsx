@@ -401,7 +401,7 @@ export const UserManualView: React.FC<UserManualViewProps> = ({
 
               <div className="text-xs text-slate-700 leading-relaxed space-y-3">
                 <p>
-                  Si necesitas verificar o regenerar las tablas en tu consola de Supabase, puedes copiar el código SQL completo y correrlo en <strong>Supabase &gt; SQL Editor &gt; New query</strong>:
+                  Si necesitas verificar o actualizar las tablas en tu consola de Supabase, puedes copiar el código SQL o la <strong>Actualización Rápida</strong> (para resolver errores de estatus <em>Agendado</em> y habilitar el catálogo de equipos) y ejecutarlo en <strong>Supabase &gt; SQL Editor</strong>:
                 </p>
 
                 <div className="bg-neutral-900 text-emerald-400 font-mono text-[11px] p-4 rounded-xl max-h-48 overflow-y-auto border border-neutral-800 select-all">

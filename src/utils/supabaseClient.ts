@@ -7,6 +7,71 @@ export const SUPABASE_ANON_KEY =
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 /**
+ * Script de Actualización Rápida y Corrección de Restricciones en Supabase:
+ * Corrige el error "violates check constraint service_reports_status_check" agregando 'Agendado',
+ * agrega las columnas necesarias a service_reports y crea la tabla configuracion_equipos.
+ */
+export const SUPABASE_QUICK_FIX_SQL = `-- ========================================================
+-- SOTEX: ACTUALIZACIÓN Y CORRECCIÓN INMEDIATA DE SUPABASE
+-- Proyecto: znlhwxjiwrwcfhswppfx
+-- Ejecutar en: Supabase Dashboard > SQL Editor > Run
+-- ========================================================
+
+-- 1. Actualizar la restricción de estatus para admitir 'Agendado'
+ALTER TABLE public.service_reports DROP CONSTRAINT IF EXISTS service_reports_status_check;
+ALTER TABLE public.service_reports ADD CONSTRAINT service_reports_status_check 
+    CHECK (status IN ('Agendado', 'En Revisión', 'Pendiente Refacción', 'Garantía', 'Completado'));
+
+-- 2. Asegurar columnas avanzadas en service_reports
+ALTER TABLE public.service_reports ADD COLUMN IF NOT EXISTS tipo_servicio TEXT DEFAULT 'campo';
+ALTER TABLE public.service_reports ADD COLUMN IF NOT EXISTS evidencias_fotos JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE public.service_reports ADD COLUMN IF NOT EXISTS aceptada_por_tecnico BOOLEAN DEFAULT false;
+ALTER TABLE public.service_reports ADD COLUMN IF NOT EXISTS fecha_aceptada TIMESTAMPTZ;
+ALTER TABLE public.service_reports ADD COLUMN IF NOT EXISTS tecnico_id TEXT;
+ALTER TABLE public.service_reports ADD COLUMN IF NOT EXISTS fecha_agenda DATE;
+ALTER TABLE public.service_reports ADD COLUMN IF NOT EXISTS contacto_nombre TEXT DEFAULT '';
+ALTER TABLE public.service_reports ADD COLUMN IF NOT EXISTS servicios_realizar JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE public.service_reports ADD COLUMN IF NOT EXISTS tipo_equipo_nombre TEXT DEFAULT '';
+ALTER TABLE public.service_reports ADD COLUMN IF NOT EXISTS foto_antes TEXT;
+ALTER TABLE public.service_reports ADD COLUMN IF NOT EXISTS foto_despues TEXT;
+ALTER TABLE public.service_reports ADD COLUMN IF NOT EXISTS danos_dinamicos JSONB DEFAULT '{}'::jsonb;
+
+-- 3. Crear tabla para catálogo dinámico de equipos y checklists
+CREATE TABLE IF NOT EXISTS public.configuracion_equipos (
+    id TEXT PRIMARY KEY,
+    nombre TEXT NOT NULL,
+    descripcion TEXT DEFAULT '',
+    checklists JSONB DEFAULT '[]'::jsonb,
+    updated_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
+);
+ALTER TABLE public.configuracion_equipos ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Permitir todo en configuracion_equipos" ON public.configuracion_equipos;
+CREATE POLICY "Permitir todo en configuracion_equipos" ON public.configuracion_equipos FOR ALL USING (true) WITH CHECK (true);
+
+-- 4. Habilitar sincronización en tiempo real (de forma segura e idempotente)
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
+    CREATE PUBLICATION supabase_realtime;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables 
+    WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'service_reports'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.service_reports;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables 
+    WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'configuracion_equipos'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.configuracion_equipos;
+  END IF;
+END $$;
+`;
+
+/**
  * SQL Schema completo para ejecutar en el Editor SQL de Supabase:
  * Incluye tablas de empleados/usuarios y reportes de servicio,
  * políticas de seguridad y las 2 credenciales de Administrador solicitadas.
@@ -199,13 +264,9 @@ INSERT INTO public.employees (
     'Guadalajara (Matriz)',
     'SOT-DIR-01',
     true
-) ON CONFLICT (usuario) DO UPDATE SET
-    nombre = EXCLUDED.nombre,
-    correo = EXCLUDED.correo,
-    password = EXCLUDED.password,
-    rol = EXCLUDED.rol;
+) ON CONFLICT (id) DO NOTHING;
 
--- Credencial 2: Carlos Raya (con contraseña segura generada)
+-- Credencial 2: Carlos Raya (Juan Carlos Rayo Vargas)
 INSERT INTO public.employees (
     id,
     nombre,
@@ -220,9 +281,9 @@ INSERT INTO public.employees (
     activo
 ) VALUES (
     'emp-carlos-raya-02',
-    'Carlos Raya',
-    'carlos_raya',
-    'carlos_raya@sotex.com.mx',
+    'Juan Carlos Rayo Vargas',
+    'c.rayo@sotex.com.mx',
+    'c.rayo@sotex.com.mx',
     'Sotex#Raya2024*9X',
     'admin',
     '3336158920',
@@ -230,25 +291,51 @@ INSERT INTO public.employees (
     'Guadalajara (Matriz)',
     'SOT-ADM-02',
     true
-) ON CONFLICT (usuario) DO UPDATE SET
-    nombre = EXCLUDED.nombre,
-    correo = EXCLUDED.correo,
-    password = EXCLUDED.password,
-    rol = EXCLUDED.rol;
+) ON CONFLICT (id) DO NOTHING;
 
 -- Verificación de usuarios insertados
 SELECT id, nombre, usuario, correo, rol, puesto, activo FROM public.employees;
 
--- 6. HABILITAR REALTIME EN TODAS LAS TABLAS DE SOTEX (Para que se actualicen sin refrescar pantalla)
+-- 6. HABILITAR REALTIME EN TODAS LAS TABLAS DE SOTEX (De forma segura e idempotente)
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
     CREATE PUBLICATION supabase_realtime;
   END IF;
-END $$;
 
-ALTER PUBLICATION supabase_realtime ADD TABLE public.system_notifications;
-ALTER PUBLICATION supabase_realtime ADD TABLE public.service_reports;
-ALTER PUBLICATION supabase_realtime ADD TABLE public.employees;
-ALTER PUBLICATION supabase_realtime ADD TABLE public.configuracion_folios;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables 
+    WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'system_notifications'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.system_notifications;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables 
+    WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'service_reports'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.service_reports;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables 
+    WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'employees'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.employees;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables 
+    WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'configuracion_folios'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.configuracion_folios;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables 
+    WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'configuracion_equipos'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.configuracion_equipos;
+  END IF;
+END $$;
 `;
